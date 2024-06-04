@@ -18,11 +18,6 @@
 - Fun commands such as tic-tac-toe and typeracer
 - Much much more!
 
-### Sned in action:
-
-| Moderation tools | Settings & configuration | Rolebuttons | Reminders |
-| ----------- | ----------- | ----------- | ----------- |
-| ![Powerful moderation commands!](https://cdn.discordapp.com/attachments/836300326172229672/952785998138466364/unknown.png) | ![Intuitive Settings and Configuration](https://cdn.discordapp.com/attachments/836300326172229672/952786784666931300/unknown.png) | ![Rolebuttons in action](https://cdn.discordapp.com/attachments/836300326172229672/952789779471294464/unknown.png) | ![Reminder snoozing in action](https://cdn.discordapp.com/attachments/836300326172229672/952790270150320228/unknown.png) |
 
 ### Configuration:
 
