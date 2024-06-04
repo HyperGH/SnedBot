@@ -2,6 +2,7 @@ import datetime
 import logging
 import os
 import pathlib
+import typing as t
 from contextlib import suppress
 
 import aiohttp
@@ -194,7 +195,7 @@ class SnedClient(arc.GatewayClientBase[hikari.GatewayBot]):
         if self.dev_mode:
             logging.warning("Developer mode is enabled!")
 
-    async def on_arc_started(self, _: arc.StartedEvent) -> None:
+    async def on_arc_started(self, _: arc.StartedEvent[t.Self]) -> None:
         # Insert all guilds the bot is member of into the db global config on startup
         async with self.db.acquire() as con:
             for guild_id in self._initial_guilds:

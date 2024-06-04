@@ -198,7 +198,7 @@ class RoleButton(DatabaseModel):
             custom_id=f"RB:{id}:{role_id}",
             emoji=emoji,
             label=label,
-            style=style,
+            style=style,  # type: ignore
         )
 
         view = miru.View.from_message(message)
@@ -233,7 +233,7 @@ class RoleButton(DatabaseModel):
             role_id=hikari.Snowflake(role),
         )
 
-        cls._client.dispatch(RoleButtonCreateEvent(cls._client, rolebutton.guild_id, rolebutton, moderator))
+        cls._client.app.dispatch(RoleButtonCreateEvent(cls._client.app, rolebutton.guild_id, rolebutton, moderator))
         return rolebutton
 
     async def update(self, moderator: hikari.PartialUser | None = None) -> None:
@@ -261,7 +261,7 @@ class RoleButton(DatabaseModel):
 
         button.emoji = self.emoji
         button.label = self.label
-        button.style = self.style
+        button.style = self.style  # type: ignore
         button.custom_id = f"RB:{self.id}:{self.role_id}"
         self._custom_id = button.custom_id
 
@@ -283,7 +283,7 @@ class RoleButton(DatabaseModel):
             self.id,
             self.guild_id,
         )
-        self._client.dispatch(RoleButtonUpdateEvent(self._client, self.guild_id, self, moderator))
+        self._client.app.dispatch(RoleButtonUpdateEvent(self._client.app, self.guild_id, self, moderator))
 
     async def delete(self, moderator: hikari.PartialUser | None = None) -> None:
         """Delete this rolebutton, removing it from the message and the database.
@@ -315,7 +315,7 @@ class RoleButton(DatabaseModel):
             self.guild_id,
             self.id,
         )
-        self._client.dispatch(RoleButtonDeleteEvent(self._client, self.guild_id, self, moderator))
+        self._client.app.dispatch(RoleButtonDeleteEvent(self._client.app, self.guild_id, self, moderator))
 
 
 # Copyright (C) 2022-present hypergonial

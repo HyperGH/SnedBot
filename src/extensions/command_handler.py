@@ -282,7 +282,7 @@ async def on_command_invoke(ctx: SnedContext) -> None:
 
 
 @plugin.listen()
-async def event_error_handler(event: hikari.ExceptionEvent) -> None:
+async def event_error_handler(event: hikari.ExceptionEvent[t.Any]) -> None:
     logging.error("Ignoring exception in listener {}:".format(event.failed_event.__class__.__name__))
     exception_msg = "\n".join(traceback.format_exception(*event.exc_info))
     logging.error(exception_msg)

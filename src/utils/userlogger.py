@@ -53,9 +53,9 @@ class UserLogger:
     """Handles the logging of audit log & other related events."""
 
     def __init__(self, client: SnedClient) -> None:
-        self._queue = {}
         self._client = client
-        self._frozen_guilds = []
+        self._queue: dict[hikari.Snowflake, list[hikari.Embed]] = {}
+        self._frozen_guilds: list[hikari.Snowflake] = []
         self._task: asyncio.Task[None] = self._client.create_task(self._iter_queue())
 
     async def _iter_queue(self) -> None:

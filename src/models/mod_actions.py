@@ -7,9 +7,9 @@ import logging
 import typing as t
 from contextlib import suppress
 
+import arc
 import attr
 import hikari
-import lightbulb
 import miru
 import toolbox
 from miru.abc import ViewItem
@@ -149,7 +149,7 @@ class ModActions:
                 if nested_key not in policies[key]:
                     policies[key][nested_key] = default_automod_policies[key][nested_key]
 
-        invalid = []
+        invalid: list[t.Any] = []
         for key in policies:
             if key not in default_automod_policies:
                 invalid.append(key)
@@ -299,7 +299,7 @@ class ModActions:
         if not event.get_guild():
             return
 
-        member = event.app.cache.get_member(timer.guild_id, timer.user_id)
+        member: hikari.Member | None = event.app.cache.get_member(timer.guild_id, timer.user_id)
         assert timer.notes is not None
         expiry = int(timer.notes)
 
@@ -664,10 +664,10 @@ class ModActions:
         me = self._client.cache.get_member(moderator.guild_id, self._client.user_id)
         assert me is not None
 
-        perms = lightbulb.utils.permissions_for(me)
+        perms = toolbox.calculate_permissions(me)
 
         if not helpers.includes_permissions(perms, hikari.Permissions.BAN_MEMBERS):
-            raise lightbulb.BotMissingRequiredPermission(perms=hikari.Permissions.BAN_MEMBERS)
+            raise arc.BotMissingPermissionsError(hikari.Permissions.BAN_MEMBERS)
 
         if isinstance(user, hikari.Member) and not helpers.is_above(me, user):
             raise RoleHierarchyError
@@ -749,13 +749,13 @@ class ModActions:
         me = self._client.cache.get_member(moderator.guild_id, self._client.user_id)
         assert me is not None
 
-        perms = lightbulb.utils.permissions_for(me)
+        perms = toolbox.calculate_permissions(me)
 
         raw_reason = reason
         reason = helpers.format_reason(reason, moderator, max_length=512)
 
         if not helpers.includes_permissions(perms, hikari.Permissions.BAN_MEMBERS):
-            raise lightbulb.BotMissingRequiredPermission(perms=hikari.Permissions.BAN_MEMBERS)
+            raise arc.BotMissingPermissionsError(hikari.Permissions.BAN_MEMBERS)
 
         try:
             await self._client.rest.unban_user(moderator.guild_id, user.id, reason=reason)

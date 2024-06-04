@@ -189,7 +189,7 @@ async def purge(
     channel = ctx.get_channel() or await ctx.client.rest.fetch_channel(ctx.channel_id)
     assert isinstance(channel, hikari.TextableGuildChannel) and ctx.guild_id
 
-    predicates = [
+    predicates: list[t.Callable[[hikari.Message], bool]] = [
         # Ignore deferred typing indicator so it doesn't get deleted lmfao
         lambda message: not (hikari.MessageFlag.LOADING & message.flags)
     ]
@@ -208,38 +208,34 @@ async def purge(
             )
             ctx.command.reset_all_limiters(ctx)
         else:
-            predicates.append(lambda message: bool(pattern.match(message.content)) if message.content else False)
+            predicates.append(lambda m: bool(pattern.match(m.content)) if m.content else False)
 
     if startswith:
-        predicates.append(lambda message: message.content.startswith(startswith) if message.content else False)
+        predicates.append(lambda m: m.content.startswith(startswith) if m.content else False)
 
     if endswith:
-        predicates.append(lambda message: message.content.endswith(endswith) if message.content else False)
+        predicates.append(lambda m: m.content.endswith(endswith) if m.content else False)
 
     if notext:
-        predicates.append(lambda message: not message.content)
+        predicates.append(lambda m: not m.content)
 
     if onlytext:
-        predicates.append(lambda message: message.content and not message.attachments and not message.embeds)
+        predicates.append(lambda m: m.content is not None and not m.attachments and not m.embeds)
 
     if attachments:
-        predicates.append(lambda message: bool(message.attachments))
+        predicates.append(lambda m: bool(m.attachments))
 
     if invites:
-        predicates.append(
-            lambda message: helpers.is_invite(message.content, fullmatch=False) if message.content else False
-        )
+        predicates.append(lambda m: helpers.is_invite(m.content, fullmatch=False) if m.content else False)
 
     if links:
-        predicates.append(
-            lambda message: helpers.is_url(message.content, fullmatch=False) if message.content else False
-        )
+        predicates.append(lambda m: helpers.is_url(m.content, fullmatch=False) if m.content else False)
 
     if embeds:
-        predicates.append(lambda message: bool(message.embeds))
+        predicates.append(lambda m: bool(m.embeds))
 
     if user:
-        predicates.append(lambda message: message.author.id == user.id)
+        predicates.append(lambda m: m.author.id == user.id)
 
     await ctx.defer()
 
@@ -844,14 +840,18 @@ async def massban(
 
     if created:
 
-        def created_pred(member: hikari.User, offset=now - datetime.timedelta(minutes=created)) -> bool:
+        def created_pred(
+            member: hikari.User, offset: datetime.datetime = now - datetime.timedelta(minutes=created)
+        ) -> bool:
             return member.created_at > offset
 
         predicates.append(created_pred)
 
     if joined:
 
-        def joined_pred(member: hikari.User, offset=now - datetime.timedelta(minutes=joined)) -> bool:
+        def joined_pred(
+            member: hikari.User, offset: datetime.datetime = now - datetime.timedelta(minutes=joined)
+        ) -> bool:
             if not isinstance(member, hikari.Member):
                 return True
             else:
@@ -861,7 +861,7 @@ async def massban(
 
     if joined_after:
 
-        def joined_after_pred(member: hikari.Member, joined_after=joined_after) -> bool:
+        def joined_after_pred(member: hikari.Member, joined_after: hikari.Member = joined_after) -> bool:
             return (
                 member.joined_at is not None
                 and joined_after.joined_at is not None
@@ -872,7 +872,7 @@ async def massban(
 
     if joined_before:
 
-        def joined_before_pred(member: hikari.Member, joined_before=joined_before) -> bool:
+        def joined_before_pred(member: hikari.Member, joined_before: hikari.Member = joined_before) -> bool:
             return (
                 member.joined_at is not None
                 and joined_before.joined_at is not None

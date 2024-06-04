@@ -30,7 +30,7 @@ class Database:
         self._port = int(os.getenv("POSTGRES_PORT") or 5432)
         self._password = os.environ["POSTGRES_PASSWORD"]
         self._version = os.getenv("POSTGRES_VERSION")
-        self._pool: asyncpg.Pool | None = None
+        self._pool: asyncpg.Pool[asyncpg.Record] | None = None
         self._schema_version: int | None = None
         self._is_closed: bool = False
 
@@ -80,7 +80,7 @@ class Database:
         return self._schema_version
 
     @property
-    def pool(self) -> asyncpg.Pool:
+    def pool(self) -> asyncpg.Pool[asyncpg.Record]:
         """The connection pool used to connect to the database."""
         if self._pool is None:
             raise DatabaseStateConflictError("The database is not connected.")
@@ -117,7 +117,7 @@ class Database:
         self._is_closed = True
 
     @asynccontextmanager
-    async def acquire(self) -> t.AsyncIterator[asyncpg.Connection]:
+    async def acquire(self) -> t.AsyncIterator[asyncpg.Connection[asyncpg.Record]]:
         """Acquire a database connection from the connection pool."""
         con = await self.pool.acquire()
         try:
@@ -125,7 +125,7 @@ class Database:
         finally:
             await self.pool.release(con)
 
-    async def execute(self, query: str, *args, timeout: float | None = None) -> str:
+    async def execute(self, query: str, *args: t.Any, timeout: float | None = None) -> str:
         """Execute an SQL command.
 
         Parameters
@@ -147,9 +147,9 @@ class Database:
         DatabaseStateConflictError
             The application is not connected to the database server.
         """
-        return await self.pool.execute(query, *args, timeout=timeout)  # type: ignore
+        return await self.pool.execute(query, *args, timeout=timeout)
 
-    async def fetch(self, query: str, *args, timeout: float | None = None) -> list[asyncpg.Record]:
+    async def fetch(self, query: str, *args: t.Any, timeout: float | None = None) -> list[asyncpg.Record]:
         """Run a query and return the results as a list of `Record`.
 
         Parameters
@@ -173,7 +173,7 @@ class Database:
         """
         return await self.pool.fetch(query, *args, timeout=timeout)
 
-    async def executemany(self, command: str, args: t.Tuple[t.Any], *, timeout: float | None = None) -> str:
+    async def executemany(self, command: str, args: t.Tuple[t.Any], *, timeout: float | None = None) -> str | None:
         """Execute an SQL command for each sequence of arguments in `args`.
 
         Parameters
@@ -195,9 +195,9 @@ class Database:
         DatabaseStateConflictError
             The application is not connected to the database server.
         """
-        return await self.pool.executemany(command, args, timeout=timeout)  # type: ignore
+        return await self.pool.executemany(command, args, timeout=timeout)
 
-    async def fetchrow(self, query: str, *args, timeout: float | None = None) -> asyncpg.Record:
+    async def fetchrow(self, query: str, *args: t.Any, timeout: float | None = None) -> asyncpg.Record | None:
         """Run a query and return the first row that matched query parameters.
 
         Parameters
@@ -219,9 +219,9 @@ class Database:
         DatabaseStateConflictError
             The application is not connected to the database server.
         """
-        return await self.pool.fetchrow(query, *args, timeout=timeout)  # type: ignore
+        return await self.pool.fetchrow(query, *args, timeout=timeout)
 
-    async def fetchval(self, query: str, *args, column: int = 0, timeout: float | None = None) -> t.Any:
+    async def fetchval(self, query: str, *args: t.Any, column: int = 0, timeout: float | None = None) -> t.Any:
         """Run a query and return a value in the first row that matched query parameters.
 
         Parameters
@@ -293,7 +293,8 @@ class Database:
         record = await self.fetchrow(
             """UPDATE schema_info SET schema_version = schema_version + 1 RETURNING schema_version"""
         )
-        self._schema_version = record["schema_version"]
+        if record is not None:
+            self._schema_version = record["schema_version"]
 
     async def _do_sql_migration(self, filename: str) -> None:
         """Apply an SQL file as a migration to the database."""

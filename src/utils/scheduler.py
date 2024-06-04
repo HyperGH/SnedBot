@@ -7,12 +7,12 @@ import logging
 import re
 import typing as t
 
+import arc
 import dateparser
 import hikari
 
 from src.models.events import TimerCompleteEvent
 from src.models.timer import Timer, TimerEvent
-from src.utils.tasks import IntervalLoop
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,8 @@ class Scheduler:
     def __init__(self, client: SnedClient) -> None:
         self.client = client
         self._current_timer: Timer | None = None  # Currently active timer that is being awaited
-        self._current_task: asyncio.Task | None = None  # Current task that is handling current_timer
-        self._timer_loop: IntervalLoop = IntervalLoop(self._wait_for_active_timers, hours=1.0)
+        self._current_task: asyncio.Task[None] | None = None  # Current task that is handling current_timer
+        self._timer_loop = arc.utils.IntervalLoop(self._wait_for_active_timers, hours=1.0)
         self._is_started: bool = False
 
     def start(self) -> None:

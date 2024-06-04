@@ -130,7 +130,7 @@ async def report(ctx: SnedContext, member: hikari.Member, message: hikari.Messag
     if not modal.last_context:  # Modal was closed/timed out
         return
 
-    role_ids = records[0]["pinged_role_ids"] or []
+    role_ids: list[int] = records[0]["pinged_role_ids"] or []
     roles = filter(lambda r: r is not None, [ctx.client.cache.get_role(role_id) for role_id in role_ids])
     role_mentions = [role.mention for role in roles if role is not None]
 

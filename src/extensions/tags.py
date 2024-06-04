@@ -5,8 +5,8 @@ from itertools import chain
 
 import arc
 import hikari
-import lightbulb
 import miru
+import toolbox
 
 from src.etc import const
 from src.models import AuthorOnlyNavigator, Tag
@@ -354,9 +354,7 @@ async def tag_claim(
     if tag:
         members = ctx.client.cache.get_members_view_for_guild(ctx.guild_id)
         if tag.owner_id not in members or (
-            helpers.includes_permissions(
-                lightbulb.utils.permissions_for(ctx.member), hikari.Permissions.MANAGE_MESSAGES
-            )
+            helpers.includes_permissions(toolbox.calculate_permissions(ctx.member), hikari.Permissions.MANAGE_MESSAGES)
             and tag.owner_id != ctx.member.id
         ):
             tag.owner_id = ctx.author.id
@@ -449,7 +447,7 @@ async def tag_delete(
 
     if tag and (
         (tag.owner_id == ctx.author.id)
-        or helpers.includes_permissions(lightbulb.utils.permissions_for(ctx.member), hikari.Permissions.MANAGE_MESSAGES)
+        or helpers.includes_permissions(toolbox.calculate_permissions(ctx.member), hikari.Permissions.MANAGE_MESSAGES)
     ):
         await tag.delete()
 

@@ -186,10 +186,10 @@ async def get_diff(guild_id: int, old_object: T, object: T, attrs: dict[str, str
         elif (
             isinstance(old, list)
             and isinstance(new, list)
-            and (old and hasattr(old[0], "name") or new and hasattr(new[0], "name"))
+            and (old and hasattr(old[0], "name") or new and hasattr(new[0], "name"))  # type: ignore
         ):  # Handling flag lists
-            old_names = [str(x) for x in old]
-            new_names = [str(x) for x in new]
+            old_names = [str(x) for x in old]  # type: ignore
+            new_names = [str(x) for x in new]  # type: ignore
             if not set(old_names) - set(new_names) or not set(new_names) - set(old_names):
                 continue
 
@@ -832,22 +832,15 @@ async def warns_clear(event: WarnsClearEvent) -> None:
 
 @plugin.listen()
 async def flag_message(event: AutoModMessageFlagEvent) -> None:
-    user_id = hikari.Snowflake(event.user)
-
     reason = helpers.format_reason(event.reason, max_length=1500)
 
-    user = (
-        event.user
-        if isinstance(event.user, hikari.PartialUser)
-        else (plugin.client.cache.get_member(event.guild_id, user_id) or (await plugin.client.rest.fetch_user(user_id)))
-    )
     content = (
         helpers.format_reason(event.message.content, max_length=2000) if event.message.content else "No content found."
     )
 
     embed = hikari.Embed(
         title="❗🚩 Message flagged",
-        description=f"`{display_user(user)}` was flagged by auto-moderator for suspicious behaviour.\n**Reason:**```{reason}```\n**Content:** ```{content}```\n\n[Jump to message!]({event.message.make_link(event.guild_id)})",
+        description=f"`{display_user(event.user)}` was flagged by auto-moderator for suspicious behaviour.\n**Reason:**```{reason}```\n**Content:** ```{content}```\n\n[Jump to message!]({event.message.make_link(event.guild_id)})",
         color=const.ERROR_COLOR,
     )
     await plugin.client.userlogger.log(LogEvent.FLAGS, embed, event.guild_id)

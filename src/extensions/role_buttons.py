@@ -4,17 +4,14 @@ import typing as t
 
 import arc
 import hikari
-import lightbulb
 import miru
+from miru.ext import nav
 
 import src.models as models
 from src.etc import const
 from src.models.client import SnedClient, SnedContext, SnedPlugin
 from src.models.rolebutton import RoleButton, RoleButtonMode
 from src.utils import helpers
-
-if t.TYPE_CHECKING:
-    from miru.ext import nav
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +227,7 @@ async def rolebutton_list(ctx: SnedContext) -> None:
         )
         return
 
-    paginator = lightbulb.utils.StringPaginator(max_chars=500)
+    paginator = nav.Paginator(max_len=500)
     for button in buttons:
         role = ctx.client.cache.get_role(button.role_id)
         channel = ctx.client.cache.get_guild_channel(button.channel_id)
@@ -247,7 +244,7 @@ async def rolebutton_list(ctx: SnedContext) -> None:
             description=page,
             color=const.EMBED_BLUE,
         )
-        for page in paginator.build_pages()
+        for page in paginator.pages
     ]
 
     navigator = models.AuthorOnlyNavigator(ctx.author, pages=embeds)

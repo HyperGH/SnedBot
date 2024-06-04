@@ -47,7 +47,7 @@ class SnoozeSelect(miru.TextSelect):
         assert self.view.reminder_message.embeds[0].description and ctx.guild_id and isinstance(self.view, SnoozeView)
         message = self.view.reminder_message.embeds[0].description.split("\n\n[Jump to original message!](")[0]
 
-        reminder_data = {
+        reminder_data: dict[str, t.Any] = {
             "message": message,
             "jump_url": ctx.message.make_link(ctx.guild_id),
             "additional_recipients": [],
@@ -358,7 +358,7 @@ async def reminder_list(ctx: SnedContext) -> None:
         )
         return
 
-    reminders = []
+    reminders: list[str] = []
 
     for record in records:
         time = datetime.datetime.fromtimestamp(record["expires"])

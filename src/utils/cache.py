@@ -98,7 +98,7 @@ class DatabaseCache:
 
         return rows if rows else None
 
-    async def refresh(self, table: str, **kwargs) -> None:
+    async def refresh(self, table: str, **kwargs: t.Any) -> None:
         """Discards and reloads a specific part of the cache, should be called after modifying database values."""
         if not self.is_ready:
             return

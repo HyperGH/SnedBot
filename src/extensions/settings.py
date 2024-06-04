@@ -99,7 +99,7 @@ class SettingsView(models.AuthorOnlyView):
 
     # Transitions
     def add_buttons(
-        self, buttons: t.Sequence[miru.Button | miru.LinkButton], parent: str | None = None, **kwargs
+        self, buttons: t.Sequence[miru.Button | miru.LinkButton], parent: str | None = None, **kwargs: t.Any
     ) -> None:
         """Add a new set of buttons, clearing previous components."""
         self.clear_items()
@@ -113,7 +113,7 @@ class SettingsView(models.AuthorOnlyView):
             self.add_item(button)
 
     def select_screen(
-        self, select: miru.abc.SelectBase, parent: str | None = None, with_done: bool = False, **kwargs
+        self, select: miru.abc.SelectBase, parent: str | None = None, with_done: bool = False, **kwargs: t.Any
     ) -> None:
         """Set view to a new select screen, clearing previous components."""
         self.clear_items()
@@ -128,7 +128,7 @@ class SettingsView(models.AuthorOnlyView):
         if with_done and parent:
             self.add_item(DoneButton(parent, **kwargs))
 
-    async def error_screen(self, embed: hikari.Embed, parent: str, **kwargs) -> None:
+    async def error_screen(self, embed: hikari.Embed, parent: str, **kwargs: t.Any) -> None:
         """Show an error screen with only a back button, and wait for input on it."""
         assert self.last_context
         self.clear_items()
@@ -218,7 +218,7 @@ Click one of the buttons below to get started!""",
             ]
 
         pinged_roles = (
-            [self.arc_client.cache.get_role(role_id) for role_id in records[0]["pinged_role_ids"]]
+            [self.arc_client.cache.get_role(role_id) for role_id in records[0]["pinged_role_ids"]]  # type: ignore
             if records[0]["pinged_role_ids"]
             else []
         )
@@ -245,7 +245,7 @@ Click one of the buttons below to get started!""",
         )
 
         buttons = [
-            BooleanButton(state=records[0]["is_enabled"] if channel else False, label="Enabled", disabled=not channel),
+            BooleanButton(state=records[0]["is_enabled"] if channel else False, label="Enabled", disabled=not channel),  # type: ignore
             OptionButton(label="Set Channel", emoji=const.EMOJI_CHANNEL, style=hikari.ButtonStyle.SECONDARY),
             OptionButton(label="Change Roles", emoji=const.EMOJI_MENTION, style=hikari.ButtonStyle.SECONDARY),
         ]
@@ -338,7 +338,7 @@ This does not apply to manually punishing them through Discord built-in commands
 Enabling **ephemeral responses** will show all moderation command responses in a manner where they will be invisible to every user except for the one who used the command.""",
             color=const.EMBED_BLUE,
         )
-        buttons = []
+        buttons: list[miru.Button] = []
         for flag in ModerationFlags:
             if flag is ModerationFlags.NONE:
                 continue
@@ -526,7 +526,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
                 inline=False,
             )
 
-        options = []
+        options: list[miru.SelectOption] = []
 
         for log_category, channel_id in log_channels.items():
             channel = self.arc_client.cache.get_guild_channel(channel_id) if channel_id else None
@@ -607,14 +607,13 @@ Enabling **ephemeral responses** will show all moderation command responses in a
             color=const.EMBED_BLUE,
         )
 
-        options = []
+        options: list[miru.SelectOption] = []
         for key in policies:
             embed.add_field(
                 name=policy_strings[key]["name"],
                 value=policies[key]["state"].capitalize(),
                 inline=True,
             )
-            # TODO: Add emojies maybe?
             options.append(miru.SelectOption(label=policy_strings[key]["name"], value=key))
 
         self.select_screen(OptionsTextSelect(options=options, placeholder="Select a policy..."), parent="Main")
@@ -641,7 +640,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
         )
 
         state = policy_data["state"]
-        buttons = []
+        buttons: list[miru.Button] = []
 
         if state == "disabled":
             embed.add_field(
@@ -670,7 +669,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
         buttons.append(OptionButton(label="State", custom_id="state", style=hikari.ButtonStyle.SECONDARY))
 
         # Conditions for certain attributes to appear
-        predicates = {
+        predicates: dict[str, t.Callable[[str], bool]] = {
             "temp_dur": lambda s: s in ["timeout", "tempban"]
             or s == "escalate"
             and policies["escalate"]["state"] in ["timeout", "tempban"],
@@ -789,7 +788,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
         list_inputs = ["words_list", "words_list_wildcard"]
 
         # Expected return type for a question
-        expected_types = {
+        expected_types: dict[str, type] = {
             "temp_dur": int,
             "words_list": list,
             "words_list_wildcard": list,

@@ -4,7 +4,7 @@ import typing as t
 
 import arc
 import hikari
-import lightbulb
+import toolbox
 
 from src.etc import const
 from src.models.client import SnedClient, SnedContext, SnedPlugin
@@ -216,15 +216,15 @@ async def force_star(ctx: SnedContext, message: hikari.Message) -> None:
         return
 
     if settings.channel_id and (channel := ctx.client.cache.get_guild_channel(settings.channel_id)):
-        perms = lightbulb.utils.permissions_in(channel, me)
+        perms = toolbox.calculate_permissions(me, channel)
         if not helpers.includes_permissions(
             perms,
             hikari.Permissions.SEND_MESSAGES
             | hikari.Permissions.VIEW_CHANNEL
             | hikari.Permissions.READ_MESSAGE_HISTORY,
         ):
-            raise lightbulb.BotMissingRequiredPermission(
-                perms=hikari.Permissions.SEND_MESSAGES
+            raise arc.BotMissingPermissionsError(
+                hikari.Permissions.SEND_MESSAGES
                 | hikari.Permissions.VIEW_CHANNEL
                 | hikari.Permissions.READ_MESSAGE_HISTORY
             )
@@ -287,7 +287,7 @@ async def on_reaction(event: hikari.GuildReactionAddEvent | hikari.GuildReaction
         return
 
     if settings.channel_id and (channel := plugin.client.cache.get_guild_channel(settings.channel_id)):
-        perms = lightbulb.utils.permissions_in(channel, me)
+        perms = toolbox.calculate_permissions(me, channel)
         if not helpers.includes_permissions(
             perms,
             hikari.Permissions.SEND_MESSAGES
@@ -307,7 +307,7 @@ async def on_reaction(event: hikari.GuildReactionAddEvent | hikari.GuildReaction
 
     # Check perms if channel is cached
     if channel := plugin.client.cache.get_guild_channel(event.channel_id):
-        perms = lightbulb.utils.permissions_in(channel, me)
+        perms = toolbox.calculate_permissions(me, channel)
         if not helpers.includes_permissions(
             perms,
             hikari.Permissions.VIEW_CHANNEL | hikari.Permissions.READ_MESSAGE_HISTORY,

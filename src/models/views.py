@@ -10,7 +10,7 @@ from src.etc import const
 class StopSelect(miru.TextSelect):
     """A select that stops the view after interaction."""
 
-    async def callback(self, context: miru.ViewContext) -> None:
+    async def callback(self, _: miru.ViewContext) -> None:
         self.view.stop()
 
 

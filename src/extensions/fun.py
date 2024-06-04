@@ -3,11 +3,11 @@ import datetime
 import logging
 import os
 import random
+import typing as t
 from enum import IntEnum
 from io import BytesIO
 from pathlib import Path
 from textwrap import fill
-from typing import TYPE_CHECKING
 
 import arc
 import hikari
@@ -26,7 +26,7 @@ from src.utils.rpn import InvalidExpressionError, Solver
 
 from ..config import Config
 
-if TYPE_CHECKING:
+if t.TYPE_CHECKING:
     from fractions import Fraction
 
 ANIMAL_EMOJI_MAPPING: dict[str, str] = {
@@ -74,7 +74,7 @@ async def handle_errors(ctx: SnedContext, exception: Exception) -> None:
 
 
 class AddBufButton(miru.Button):
-    def __init__(self, value: str, *args, **kwargs):
+    def __init__(self, value: str, *args: t.Any, **kwargs: t.Any):
         if "label" not in kwargs:
             kwargs["label"] = value
         super().__init__(*args, **kwargs)
@@ -189,10 +189,11 @@ class CalculatorView(AuthorOnlyView):
 
         return True
 
-    async def on_timeout(self, ctx: miru.ViewContext) -> None:
+    async def on_timeout(self) -> None:
         for item in self.children:
             item.disabled = True
-        await ctx.edit_response(components=self)
+        if self.message:
+            await self.message.edit(components=self)
 
 
 class WinState(IntEnum):
@@ -273,7 +274,9 @@ class TicTacToeButton(miru.Button):
 
 
 class TicTacToeView(miru.View):
-    def __init__(self, size: int, player_x: hikari.Member, player_o: hikari.Member, *args, **kwargs) -> None:
+    def __init__(
+        self, size: int, player_x: hikari.Member, player_o: hikari.Member, *args: t.Any, **kwargs: t.Any
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.current_player: hikari.Member = player_x
         self.size: int = size
@@ -309,7 +312,7 @@ class TicTacToeView(miru.View):
         # TODO: Replace this old garbage
 
         # Check rows
-        blocked = []
+        blocked: list[bool] = []
         for row in self.board:
             if not (-1 in row and 1 in row):
                 blocked.append(False)
@@ -320,14 +323,14 @@ class TicTacToeView(miru.View):
             blocked_list[0] = True
 
         # Check columns
-        values = []
+        col_values: list[list[int]] = []
         for col in range(self.size):
-            values.append([])
+            col_values.append([])
             for row in self.board:
-                values[col].append(row[col])
+                col_values[col].append(row[col])
 
         blocked = []
-        for col in values:
+        for col in col_values:
             if not (-1 in col and 1 in col):
                 blocked.append(False)
             else:
@@ -336,7 +339,7 @@ class TicTacToeView(miru.View):
             blocked_list[1] = True
 
         # Check diagonals
-        values = []
+        values: list[int] = []
         diag_offset = self.size - 1
         for i in range(0, self.size):
             values.append(self.board[i][diag_offset])
@@ -587,7 +590,7 @@ async def typeracer(
         img = img.resize((int(textwidth) + margin, len(lines) * (42 + margin)))
         draw = ImageDraw.Draw(img)
 
-        draw.text((margin / 2, margin / 2), display_text, font=text_font, fill="white")
+        draw.text((margin / 2, margin / 2), display_text, font=text_font, fill="white")  # type: ignore
         buffer = BytesIO()
         img.save(buffer, format="PNG")
         return buffer
@@ -611,7 +614,7 @@ async def typeracer(
 
     end_trigger = asyncio.Event()
     start = helpers.utcnow()
-    winners = {}
+    winners: dict[hikari.User, float] = {}
 
     def predicate(event: hikari.GuildMessageCreateEvent) -> bool:
         message = event.message
@@ -627,7 +630,7 @@ async def typeracer(
             asyncio.create_task(message.add_reaction("✅"))  # noqa: RUF006
             end_trigger.set()
 
-        elif lev.distance(text.lower(), message.content.lower()) < 5:
+        elif lev.distance(text.lower(), message.content.lower()) < 5:  # type: ignore
             asyncio.create_task(message.add_reaction("❌"))  # noqa: RUF006
 
         return False

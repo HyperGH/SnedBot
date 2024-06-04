@@ -6,9 +6,11 @@ import typing as t
 import unicodedata
 from contextlib import suppress
 
+import arc
 import hikari
-import lightbulb
 import pytz
+import toolbox
+from miru.ext import nav
 
 from src.etc import const
 from src.models import errors
@@ -227,11 +229,11 @@ def can_harm(
     me: hikari.Member, member: hikari.Member, permission: hikari.Permissions, *, raise_error: bool = False
 ) -> bool:
     """Returns True if "member" can be harmed by "me", also checks if "me" has "permission"."""
-    perms = lightbulb.utils.permissions_for(me)
+    perms = toolbox.calculate_permissions(me)
 
     if not includes_permissions(perms, permission):
         if raise_error:
-            raise lightbulb.BotMissingRequiredPermission(perms=permission)
+            raise arc.BotMissingPermissionsError(permission)
         return False
 
     if not is_above(me, member):
@@ -327,12 +329,22 @@ async def parse_message_link(ctx: SnedContext, message_link: str) -> hikari.Mess
 
     channel = ctx.client.cache.get_guild_channel(channel_id)
     me = ctx.client.cache.get_member(ctx.guild_id, ctx.client.user_id)
-    assert me is not None and isinstance(channel, hikari.TextableGuildChannel)
+    assert me is not None
 
-    if channel and isinstance(channel, hikari.PermissibleGuildChannel):  # Make reasonable attempt at checking perms
-        perms = lightbulb.utils.permissions_in(channel, me)
+    if isinstance(channel, hikari.TextableGuildChannel):  # Make reasonable attempt at checking perms
+        perms = toolbox.calculate_permissions(me, channel)
         if not (perms & hikari.Permissions.READ_MESSAGE_HISTORY):
-            raise lightbulb.BotMissingRequiredPermission(perms=hikari.Permissions.READ_MESSAGE_HISTORY)
+            raise arc.BotMissingPermissionsError(hikari.Permissions.READ_MESSAGE_HISTORY)
+    else:
+        await ctx.respond(
+            embed=hikari.Embed(
+                title="❌ Invalid channel",
+                description="There are no messages in this channel.",
+                color=const.ERROR_COLOR,
+            ),
+            flags=hikari.MessageFlag.EPHEMERAL,
+        )
+        return
 
     try:
         message = await ctx.client.rest.fetch_message(channel_id, message_id)
@@ -355,7 +367,7 @@ async def maybe_delete(message: hikari.PartialMessage) -> None:
         await message.delete()
 
 
-async def maybe_edit(message: hikari.PartialMessage, *args, **kwargs) -> None:
+async def maybe_edit(message: hikari.PartialMessage, *args: t.Any, **kwargs: t.Any) -> None:
     with suppress(hikari.NotFoundError, hikari.ForbiddenError, hikari.HTTPError):
         await message.edit(*args, **kwargs)
 
@@ -394,7 +406,7 @@ def format_reason(
 
 def build_journal_pages(entries: list[JournalEntry]) -> list[hikari.Embed]:
     """Build a list of embeds to send to a user containing journal entries, with pagination."""
-    paginator = lightbulb.utils.StringPaginator(max_chars=1500)
+    paginator = nav.Paginator(max_len=1500)
     for entry in entries:
         paginator.add_line(f"`#{entry.id}` {entry.display_content}")
 
@@ -404,7 +416,7 @@ def build_journal_pages(entries: list[JournalEntry]) -> list[hikari.Embed]:
             description=page,
             color=const.EMBED_BLUE,
         )
-        for page in paginator.build_pages()
+        for page in paginator.pages
     ]
     return embeds
 

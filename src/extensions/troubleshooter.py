@@ -77,7 +77,7 @@ async def troubleshoot(ctx: SnedContext) -> None:
     assert ctx.guild_id is not None
 
     missing_perms = ~ctx.app_permissions & REQUIRED_PERMISSIONS
-    content_list = []
+    content_list: list[str] = []
 
     if missing_perms is not hikari.Permissions.NONE:
         content_list.append("**Missing Permissions:**")
