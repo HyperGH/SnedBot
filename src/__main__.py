@@ -39,7 +39,7 @@ if os.name != "nt":  # Lol imagine using Windows
     try:
         import uvloop
 
-        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())  # type: ignore
     except ImportError:
         logging.warn(
             "Failed to import uvloop! Make sure to install it via 'pip install uvloop' for enhanced performance!"
