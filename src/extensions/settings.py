@@ -510,10 +510,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
         """Show and handle Logging menu."""
         assert self.last_context is not None and self.last_context.guild_id is not None
 
-        userlog = self.arc_client.get_plugin("Logging")
-        assert userlog is not None
-
-        log_channels = await userlog.d.actions.get_log_channel_ids_view(self.last_context.guild_id)
+        log_channels = await self.arc_client.userlogger.get_log_channel_ids_view(self.last_context.guild_id)
 
         embed = hikari.Embed(
             title="Logging Settings",
@@ -541,7 +538,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
             options.append(miru.SelectOption(label=log_event_strings[log_category], value=log_category))
 
         self.select_screen(OptionsTextSelect(options=options, placeholder="Select a category..."), parent="Main")
-        is_color = await userlog.d.actions.is_color_enabled(self.last_context.guild_id)
+        is_color = await self.arc_client.userlogger.is_color_enabled(self.last_context.guild_id)
         self.add_item(BooleanButton(state=is_color, label="Color logs"))
 
         await self.last_context.edit_response(embed=embed, components=self, flags=self.flags)
@@ -593,9 +590,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
             return
 
         channel = self.value.channels[0] if self.value.channels else None
-        userlog = self.arc_client.get_plugin("Logging")
-        assert userlog is not None
-        await userlog.d.actions.set_log_channel(
+        await self.arc_client.userlogger.set_log_channel(
             LogEvent(log_event), self.last_context.guild_id, channel.id if channel else None
         )
 
@@ -605,11 +600,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
         """Open and handle automoderation main menu."""
         assert self.last_context is not None and self.last_context.guild_id is not None
 
-        automod = self.arc_client.get_plugin("Auto-Moderation")
-
-        assert automod is not None
-
-        policies = await automod.d.actions.get_policies(self.last_context.guild_id)
+        policies = await self.arc_client.mod.get_automod_policies(self.last_context.guild_id)
         embed = hikari.Embed(
             title="Automoderation Settings",
             description="Below you can see a summary of the current automoderation settings. To see more details about a specific entry or change their settings, select it below!",
@@ -641,11 +632,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
         if not policy:
             return await self.settings_automod()
 
-        automod = self.arc_client.get_plugin("Auto-Moderation")
-
-        assert automod is not None
-
-        policies: dict[str, t.Any] = await automod.d.actions.get_policies(self.last_context.guild_id)
+        policies: dict[str, t.Any] = await self.arc_client.mod.get_automod_policies(self.last_context.guild_id)
         policy_data = policies[policy]
         embed = hikari.Embed(
             title=f"Options for: {policy_strings[policy]['name']}",
@@ -671,9 +658,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
             )
 
         elif state in ["flag", "notice"]:
-            userlog = self.arc_client.get_plugin("Logging")
-            assert userlog is not None
-            channel_id = await userlog.d.actions.get_log_channel_id(LogEvent.FLAGS, self.last_context.guild_id)
+            channel_id = await self.arc_client.userlogger.get_log_channel_id(LogEvent.FLAGS, self.last_context.guild_id)
             if not channel_id:
                 embed.add_field(
                     name="⚠️ Warning:",

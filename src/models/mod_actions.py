@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import enum
+import json
 import logging
 import typing as t
 from contextlib import suppress
@@ -14,6 +15,7 @@ import toolbox
 from miru.abc import ViewItem
 
 from src.etc import const
+from src.etc.settings_static import default_automod_policies
 from src.models.db_user import DatabaseUser, DatabaseUserFlag
 from src.models.errors import DMFailedError, RoleHierarchyError
 from src.models.events import TimerCompleteEvent, WarnCreateEvent, WarnRemoveEvent, WarnsClearEvent
@@ -95,6 +97,67 @@ class ModActions:
             return ModerationSettings(flags=ModerationFlags(records[0].get("flags")))
 
         return ModerationSettings()
+
+    async def get_msg_flags(self, guild: hikari.SnowflakeishOr[hikari.PartialGuild]) -> hikari.MessageFlag:
+        """Get the message flags for a guild.
+
+        Parameters
+        ----------
+        guild : hikari.SnowflakeishOr[hikari.PartialGuild]
+            The guild to get message flags for.
+
+        Returns
+        -------
+        hikari.MessageFlag
+            The guild's message flags.
+        """
+        return (
+            hikari.MessageFlag.EPHEMERAL
+            if (await self.is_ephemeral(hikari.Snowflake(guild)))
+            else hikari.MessageFlag.NONE
+        )
+
+    async def is_ephemeral(self, guild: hikari.SnowflakeishOr[hikari.PartialGuild]) -> bool:
+        """Check if responses to moderation actions should be done ephemerally."""
+        return bool((await self.get_settings(hikari.Snowflake(guild))).flags & ModerationFlags.IS_EPHEMERAL)
+
+    # TODO: Purge this cursed abomination
+    async def get_automod_policies(self, guild: hikari.SnowflakeishOr[hikari.Guild]) -> dict[str, t.Any]:
+        """Return auto-moderation policies for the specified guild.
+
+        Parameters
+        ----------
+        guild : hikari.SnowflakeishOr[hikari.Guild]
+            The guild to get policies for.
+
+        Returns
+        -------
+        dict[str, t.Any]
+            The guild's auto-moderation policies.
+        """
+        guild_id = hikari.Snowflake(guild)
+
+        records = await self._client.db_cache.get(table="mod_config", guild_id=guild_id)
+
+        policies = json.loads(records[0]["automod_policies"]) if records else default_automod_policies
+
+        for key in default_automod_policies:
+            if key not in policies:
+                policies[key] = default_automod_policies[key]
+
+            for nested_key in default_automod_policies[key]:
+                if nested_key not in policies[key]:
+                    policies[key][nested_key] = default_automod_policies[key][nested_key]
+
+        invalid = []
+        for key in policies:
+            if key not in default_automod_policies:
+                invalid.append(key)
+
+        for key in invalid:
+            policies.pop(key)
+
+        return policies
 
     async def pre_mod_actions(
         self,

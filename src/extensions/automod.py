@@ -1,6 +1,5 @@
 import datetime
 import enum
-import json
 import logging
 import re
 import typing as t
@@ -11,7 +10,7 @@ import kosu
 
 import src.utils as utils
 from src.etc import const
-from src.etc.settings_static import default_automod_policies, notices
+from src.etc.settings_static import notices
 from src.models.client import SnedClient, SnedPlugin
 from src.models.events import AutoModMessageFlagEvent
 from src.utils import helpers
@@ -59,45 +58,6 @@ class AutoModState(enum.Enum):
     SOFTBAN = "softban"
     TEMPBAN = "tempban"
     PERMABAN = "permaban"
-
-
-# TODO: Purge this cursed abomination
-async def get_policies(guild: hikari.SnowflakeishOr[hikari.Guild]) -> dict[str, t.Any]:
-    """Return auto-moderation policies for the specified guild.
-
-    Parameters
-    ----------
-    guild : hikari.SnowflakeishOr[hikari.Guild]
-        The guild to get policies for.
-
-    Returns
-    -------
-    dict[str, t.Any]
-        The guild's auto-moderation policies.
-    """
-    guild_id = hikari.Snowflake(guild)
-
-    records = await plugin.client.db_cache.get(table="mod_config", guild_id=guild_id)
-
-    policies = json.loads(records[0]["automod_policies"]) if records else default_automod_policies
-
-    for key in default_automod_policies:
-        if key not in policies:
-            policies[key] = default_automod_policies[key]
-
-        for nested_key in default_automod_policies[key]:
-            if nested_key not in policies[key]:
-                policies[key][nested_key] = default_automod_policies[key][nested_key]
-
-    invalid = []
-    for key in policies:
-        if key not in default_automod_policies:
-            invalid.append(key)
-
-    for key in invalid:
-        policies.pop(key)
-
-    return policies
 
 
 def can_automod_punish(me: hikari.Member, offender: hikari.Member) -> bool:
@@ -628,7 +588,7 @@ async def scan_messages(event: hikari.GuildMessageCreateEvent | hikari.GuildMess
     if not message.member or message.member.is_bot:
         return
 
-    policies = await get_policies(message.guild_id)
+    policies = await plugin.client.mod.get_automod_policies(message.guild_id)
 
     if isinstance(event, hikari.GuildMessageUpdateEvent):
         all(

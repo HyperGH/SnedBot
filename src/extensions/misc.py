@@ -313,7 +313,7 @@ async def edit(
 
     assert ctx.interaction.app_permissions is not None
 
-    channel = ctx.app.cache.get_guild_channel(message.channel_id) or await ctx.app.rest.fetch_channel(
+    channel = ctx.client.cache.get_guild_channel(message.channel_id) or await ctx.client.rest.fetch_channel(
         message.channel_id
     )
 
@@ -321,13 +321,11 @@ async def edit(
         ctx.interaction.app_permissions,
         hikari.Permissions.SEND_MESSAGES | hikari.Permissions.VIEW_CHANNEL | hikari.Permissions.READ_MESSAGE_HISTORY,
     ):
-        raise lightbulb.BotMissingRequiredPermission(
-            perms=hikari.Permissions.SEND_MESSAGES
-            | hikari.Permissions.VIEW_CHANNEL
-            | hikari.Permissions.READ_MESSAGE_HISTORY
+        raise arc.BotMissingPermissionsError(
+            hikari.Permissions.SEND_MESSAGES | hikari.Permissions.VIEW_CHANNEL | hikari.Permissions.READ_MESSAGE_HISTORY
         )
 
-    if message.author.id != ctx.app.user_id:
+    if message.author.id != ctx.client.user_id:
         await ctx.respond(
             embed=hikari.Embed(
                 title="❌ Not Authored",
@@ -349,7 +347,8 @@ async def edit(
             max_length=2000,
         )
     )
-    await modal.send(ctx.interaction)
+    await ctx.respond_with_builder(modal.build_response(ctx.client.miru))
+    ctx.client.miru.start_modal(modal)
     await modal.wait()
     if not modal.last_context:
         return
@@ -362,18 +361,16 @@ async def edit(
     )
 
 
-@plugin.command
-@lightbulb.app_command_permissions(None, dm_enabled=False)
-@lightbulb.add_checks(
-    bot_has_permissions(
+@plugin.include
+@arc.with_hook(
+    arc.bot_has_permissions(
         hikari.Permissions.SEND_MESSAGES | hikari.Permissions.VIEW_CHANNEL | hikari.Permissions.READ_MESSAGE_HISTORY
     )
 )
-@lightbulb.command("Raw Content", "Show raw content for this message.", pass_options=True)
-@lightbulb.implements(lightbulb.MessageCommand)
-async def raw(ctx: SnedMessageContext, target: hikari.Message) -> None:
-    if target.content:
-        await ctx.respond(f"```{target.content[:1990]}```", flags=hikari.MessageFlag.EPHEMERAL)
+@arc.message_command("Raw Content")
+async def raw(ctx: SnedContext, message: hikari.Message) -> None:
+    if message.content:
+        await ctx.respond(f"```{message.content[:1990]}```", flags=hikari.MessageFlag.EPHEMERAL)
     else:
         await ctx.respond(
             embed=hikari.Embed(
@@ -385,14 +382,21 @@ async def raw(ctx: SnedMessageContext, target: hikari.Message) -> None:
         )
 
 
-@plugin.command
-@lightbulb.app_command_permissions(None, dm_enabled=False)
-@lightbulb.option("timezone", "The timezone to set as your default. Example: 'Europe/Kiev'", autocomplete=True)
-@lightbulb.command(
-    "timezone", "Sets your preferred timezone for other time-related commands to use.", pass_options=True
-)
-@lightbulb.implements(lightbulb.SlashCommand)
-async def set_timezone(ctx: SnedSlashContext, timezone: str) -> None:
+async def tz_autocomplete(data: arc.AutocompleteData[SnedClient, str]) -> list[str]:
+    if data.focused_value:
+        return get_close_matches(data.focused_value.title(), pytz.common_timezones, 25)
+    return []
+
+
+@plugin.include
+@arc.slash_command("timezone", "Sets your preferred timezone for other time-related commands to use.")
+async def set_timezone(
+    ctx: SnedContext,
+    timezone: arc.Option[
+        str,
+        arc.StrParams("The timezone to set as your default. Example: 'Europe/Kiev'", autocomplete_with=tz_autocomplete),
+    ],
+) -> None:
     if timezone.title() not in pytz.common_timezones:
         await ctx.respond(
             embed=hikari.Embed(
@@ -404,16 +408,16 @@ async def set_timezone(ctx: SnedSlashContext, timezone: str) -> None:
         )
         return
 
-    await ctx.app.db.execute(
+    await ctx.client.db.execute(
         """
-    INSERT INTO preferences (user_id, timezone)
-    VALUES ($1, $2)
-    ON CONFLICT (user_id) DO
-    UPDATE SET timezone = $2""",
+        INSERT INTO preferences (user_id, timezone)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id) DO
+        UPDATE SET timezone = $2""",
         ctx.user.id,
         timezone.title(),
     )
-    await ctx.app.db_cache.refresh(table="preferences", user_id=ctx.user.id, timezone=timezone.title())
+    await ctx.client.db_cache.refresh(table="preferences", user_id=ctx.user.id, timezone=timezone.title())
 
     await ctx.respond(
         embed=hikari.Embed(
@@ -425,40 +429,31 @@ async def set_timezone(ctx: SnedSlashContext, timezone: str) -> None:
     )
 
 
-@set_timezone.autocomplete("timezone")
-async def tz_opts(
-    option: hikari.AutocompleteInteractionOption, interaction: hikari.AutocompleteInteraction
-) -> list[str]:
-    if option.value:
-        assert isinstance(option.value, str)
-        return get_close_matches(option.value.title(), pytz.common_timezones, 25)
-    return []
-
-
-@plugin.command
-@lightbulb.app_command_permissions(None, dm_enabled=False)
-@lightbulb.option(
-    "style",
-    "Timestamp style.",
-    choices=[
-        "t - Short time",
-        "T - Long time",
-        "d - Short date",
-        "D - Long Date",
-        "f - Short Datetime",
-        "F - Long Datetime",
-        "R - Relative",
+@plugin.include
+@arc.slash_command("timestamp", "Create a Discord timestamp from human-readable time formats and dates.")
+async def timestamp_gen(
+    ctx: SnedContext,
+    time: arc.Option[
+        str, arc.StrParams("The time to create the timestamp from. Examples: 'in 20 minutes', '2022-04-03', '21:43'")
     ],
-    required=False,
-)
-@lightbulb.option("time", "The time to create the timestamp from. Examples: 'in 20 minutes', '2022-04-03', '21:43'")
-@lightbulb.command(
-    "timestamp", "Create a Discord timestamp from human-readable time formats and dates.", pass_options=True
-)
-@lightbulb.implements(lightbulb.SlashCommand)
-async def timestamp_gen(ctx: SnedSlashContext, time: str, style: str | None = None) -> None:
+    style: arc.Option[
+        str | None,
+        arc.StrParams(
+            "Timestamp style.",
+            choices=[
+                "t - Short time",
+                "T - Long time",
+                "d - Short date",
+                "D - Long Date",
+                "f - Short Datetime",
+                "F - Long Datetime",
+                "R - Relative",
+            ],
+        ),
+    ] = None,
+) -> None:
     try:
-        converted_time = await ctx.app.scheduler.convert_time(
+        converted_time = await ctx.client.scheduler.convert_time(
             time, conversion_mode=ConversionMode.ABSOLUTE, user=ctx.user
         )
     except ValueError as error:

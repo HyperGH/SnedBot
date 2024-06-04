@@ -73,9 +73,10 @@ PERM_DESCRIPTIONS = {
     is_dm_enabled=False,
 )
 async def troubleshoot(ctx: SnedContext) -> None:
-    assert ctx.interaction.app_permissions is not None
+    assert ctx.app_permissions is not None
+    assert ctx.guild_id is not None
 
-    missing_perms = ~ctx.interaction.app_permissions & REQUIRED_PERMISSIONS
+    missing_perms = ~ctx.app_permissions & REQUIRED_PERMISSIONS
     content_list = []
 
     if missing_perms is not hikari.Permissions.NONE:
@@ -98,7 +99,7 @@ async def troubleshoot(ctx: SnedContext) -> None:
             color=const.ERROR_COLOR,
         )
 
-    await ctx.mod_respond(embed=embed)
+    await ctx.respond(embed=embed, flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)))
 
 
 @arc.loader

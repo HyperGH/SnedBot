@@ -504,11 +504,9 @@ async def calc(
 @arc.slash_command("tictactoe", "Play tic tac toe with someone!")
 async def tictactoe(
     ctx: SnedContext,
-    user: arc.Option[hikari.User, arc.UserParams("The user to play tic tac toe with!")],
+    user: arc.Option[hikari.Member, arc.MemberParams("The user to play tic tac toe with!")],
     size: arc.Option[int, arc.IntParams("The size of the board. Default is 3.", choices=[3, 4, 5])] = 3,
 ) -> None:
-    if not helpers.is_member(user):
-        return
     assert ctx.member is not None
 
     if user.id == ctx.author.id:
@@ -728,11 +726,9 @@ async def urban_lookup(ctx: SnedContext, word: arc.Option[str, arc.StrParams("Th
 @arc.slash_command("avatar", "Displays a user's avatar for your viewing pleasure.")
 async def avatar(
     ctx: SnedContext,
-    user: arc.Option[hikari.User | None, arc.UserParams("The user to show the avatar for.")] = None,
+    user: arc.Option[hikari.Member | None, arc.MemberParams("The user to show the avatar for.")] = None,
     show_global: arc.Option[bool, arc.BoolParams("To show the global avatar or not, if applicable.")] = False,
 ) -> None:
-    if user and not helpers.is_member(user):
-        return
     member = user or ctx.member
     assert member is not None
 

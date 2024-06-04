@@ -54,11 +54,9 @@ role = plugin.include_slash_group(
 @arc.slash_subcommand("add", "Add a role to the target user.")
 async def role_add(
     ctx: SnedContext,
-    user: arc.Option[hikari.User, arc.UserParams("The user to add the role to.")],
+    user: arc.Option[hikari.Member, arc.MemberParams("The user to add the role to.")],
     role: arc.Option[hikari.Role, arc.RoleParams("The role to add.")],
 ) -> None:
-    if not helpers.is_member(user):
-        return
     assert ctx.guild_id and ctx.member
 
     me = ctx.client.cache.get_member(ctx.guild_id, ctx.client.user_id)
@@ -100,10 +98,11 @@ async def role_add(
     await ctx.client.rest.add_role_to_member(
         ctx.guild_id, user, role, reason=f"{ctx.member} ({ctx.member.id}): Added role via Sned"
     )
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=hikari.Embed(
             title="✅ Role added", description=f"Added role {role.mention} to `{user}`.", color=const.EMBED_GREEN
-        )
+        ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
 
@@ -111,11 +110,9 @@ async def role_add(
 @arc.slash_subcommand("remove", "Remove a role from the target user.")
 async def role_del(
     ctx: SnedContext,
-    user: arc.Option[hikari.User, arc.UserParams("The user to remove the role from.")],
+    user: arc.Option[hikari.Member, arc.MemberParams("The user to remove the role from.")],
     role: arc.Option[hikari.Role, arc.RoleParams("The role to remove.")],
 ) -> None:
-    if not helpers.is_member(user):
-        return
     assert ctx.guild_id and ctx.member
 
     me = ctx.client.cache.get_member(ctx.guild_id, ctx.client.user_id)
@@ -157,10 +154,11 @@ async def role_del(
     await ctx.client.rest.remove_role_from_member(
         ctx.guild_id, user, role, reason=f"{ctx.member} ({ctx.member.id}): Removed role via Sned"
     )
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=hikari.Embed(
             title="✅ Role removed", description=f"Removed role {role.mention} from `{user}`.", color=const.EMBED_GREEN
-        )
+        ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
 
@@ -189,7 +187,7 @@ async def purge(
     ] = None,
 ) -> None:
     channel = ctx.get_channel() or await ctx.client.rest.fetch_channel(ctx.channel_id)
-    assert isinstance(channel, hikari.TextableGuildChannel)
+    assert isinstance(channel, hikari.TextableGuildChannel) and ctx.guild_id
 
     predicates = [
         # Ignore deferred typing indicator so it doesn't get deleted lmfao
@@ -275,7 +273,7 @@ async def purge(
             color=const.ERROR_COLOR,
         )
 
-    await ctx.mod_respond(embed=embed)
+    await ctx.respond(embed=embed, flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)))
 
 
 @plugin.include
@@ -287,36 +285,36 @@ async def purge(
 )
 async def deobfuscate(
     ctx: SnedContext,
-    user: arc.Option[hikari.User, arc.UserParams("The user who's nickname should be deobfuscated.")],
+    user: arc.Option[hikari.Member, arc.MemberParams("The user who's nickname should be deobfuscated.")],
     strict: arc.Option[
         bool, arc.BoolParams("If enabled, uses stricter filtering and may filter out certain valid letters.")
     ] = True,
 ) -> None:
-    if not helpers.is_member(user):
-        return
-
+    assert ctx.guild_id is not None
     new_nick = helpers.normalize_string(user.display_name, strict=strict)
     if not new_nick:
         new_nick = "Blessed by Sned"
 
     if new_nick == user.display_name:
-        await ctx.mod_respond(
+        await ctx.respond(
             embed=hikari.Embed(
                 title="ℹ️ No action taken",
                 description=f"The nickname of **{user.display_name}** is already deobfuscated or contains nothing to deobfuscate.",
                 color=const.EMBED_BLUE,
-            )
+            ),
+            flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
         )
         return
 
     await user.edit(nickname=new_nick, reason=f"{ctx.author} ({ctx.author.id}): Deobfuscated nickname")
 
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=hikari.Embed(
             title="✅ Deobfuscated!",
             description=f"{user.mention}'s nickname is now: `{new_nick}`",
             color=const.EMBED_GREEN,
-        )
+        ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
 
@@ -328,23 +326,25 @@ journal = plugin.include_slash_group(
 @journal.include
 @arc.slash_subcommand("get", "Retrieve the journal for the specified user.")
 async def journal_get(
-    ctx: SnedContext, user: arc.Option[hikari.User, arc.UserParams("The user to retrieve the journal for.")]
+    ctx: SnedContext, user: arc.Option[hikari.Member, arc.MemberParams("The user to retrieve the journal for.")]
 ) -> None:
     assert ctx.guild_id is not None
     journal = await JournalEntry.fetch_journal(user, ctx.guild_id)
 
     if journal:
-        navigator = models.AuthorOnlyNavigator(ctx, pages=helpers.build_journal_pages(journal))  # type: ignore
+        navigator = models.AuthorOnlyNavigator(ctx.author, pages=helpers.build_journal_pages(journal))  # type: ignore
         ephemeral = bool((await ctx.client.mod.get_settings(ctx.guild_id)).flags & ModerationFlags.IS_EPHEMERAL)
-        await navigator.send(ctx.interaction, ephemeral=ephemeral)
+        await ctx.respond_with_builder(await navigator.build_response_async(ctx.client.miru, ephemeral=ephemeral))
+        ctx.client.miru.start_view(navigator)
 
     else:
-        await ctx.mod_respond(
+        await ctx.respond(
             embed=hikari.Embed(
                 title="📒 Journal entries for this user:",
-                description=f"There are no journal entries for this user yet. Any moderation-actions will leave an entry here, or you can set one manually with `/journal add {ctx.options.user}`",
+                description=f"There are no journal entries for this user yet. Any moderation-actions will leave an entry here, or you can set one manually with `/journal add {user}`",
                 color=const.EMBED_BLUE,
-            )
+            ),
+            flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
         )
 
 
@@ -365,12 +365,13 @@ async def journal_add(
         created_at=helpers.utcnow(),
     ).update()
 
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=hikari.Embed(
             title="✅ Journal entry added!",
-            description=f"Added a new journal entry to user **{user}**. You can view this user's journal via the command `/journal get {ctx.options.user}`.",
+            description=f"Added a new journal entry to user **{user}**. You can view this user's journal via the command `/journal get {user}`.",
             color=const.EMBED_GREEN,
-        )
+        ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
 
@@ -383,20 +384,19 @@ async def journal_add(
 )
 async def warn_cmd(
     ctx: SnedContext,
-    user: arc.Option[hikari.User, arc.UserParams("The user to be warned.")],
+    user: arc.Option[hikari.Member, arc.MemberParams("The user to be warned.")],
     reason: arc.Option[str | None, arc.StrParams("The reason for this warn")] = None,
 ) -> None:
-    if not helpers.is_member(user):
-        return
-    assert ctx.member is not None
+    assert ctx.member is not None and ctx.guild_id is not None
     embed = await ctx.client.mod.warn(user, ctx.member, reason=reason)
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=embed,
         components=miru.View().add_item(
             miru.Button(
                 label="View Journal", custom_id=f"JOURNAL:{user.id}:{ctx.member.id}", style=hikari.ButtonStyle.SECONDARY
             )
         ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
 
@@ -406,9 +406,8 @@ warns = plugin.include_slash_group("warns", "Manage warnings.", default_permissi
 @warns.include
 @arc.slash_subcommand("list", "List the current warning count for a user.")
 async def warns_list(
-    ctx: SnedContext, user: arc.Option[hikari.User, arc.UserParams("The user to show the warning count for.")]
+    ctx: SnedContext, user: arc.Option[hikari.Member, arc.MemberParams("The user to show the warning count for.")]
 ) -> None:
-    helpers.is_member(user)
     assert ctx.guild_id is not None
 
     db_user = await DatabaseUser.fetch(user.id, ctx.guild_id)
@@ -419,7 +418,7 @@ async def warns_list(
         color=const.WARN_COLOR,
     )
     embed.set_thumbnail(user.display_avatar_url)
-    await ctx.mod_respond(embed=embed)
+    await ctx.respond(embed=embed, flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)))
 
 
 @warns.include
@@ -427,21 +426,19 @@ async def warns_list(
 @arc.slash_subcommand("clear", "Clear warnings for the specified user.")
 async def warns_clear(
     ctx: SnedContext,
-    user: arc.Option[hikari.User, arc.UserParams("The user to clear warnings for.")],
+    user: arc.Option[hikari.Member, arc.MemberParams("The user to clear warnings for.")],
     reason: arc.Option[str | None, arc.StrParams("The reason for clearing this user's warns.")] = None,
 ) -> None:
-    if not helpers.is_member(user):
-        return
-
     assert ctx.guild_id is not None and ctx.member is not None
     embed = await ctx.client.mod.clear_warns(user, ctx.member, reason=reason)
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=embed,
         components=miru.View().add_item(
             miru.Button(
                 label="View Journal", custom_id=f"JOURNAL:{user.id}:{ctx.member.id}", style=hikari.ButtonStyle.SECONDARY
             )
         ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
 
@@ -450,22 +447,20 @@ async def warns_clear(
 @arc.slash_subcommand("remove", "Remove a single warning from the specified user.")
 async def warns_remove(
     ctx: SnedContext,
-    user: arc.Option[hikari.User, arc.UserParams("The user to remove a warning from.")],
+    user: arc.Option[hikari.Member, arc.MemberParams("The user to remove a warning from.")],
     reason: arc.Option[str | None, arc.StrParams("The reason for removing this user's warn.")] = None,
 ) -> None:
-    if not helpers.is_member(user):
-        return
-
     assert ctx.guild_id is not None and ctx.member is not None
 
     embed = await ctx.client.mod.remove_warn(user, ctx.member, reason=reason)
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=embed,
         components=miru.View().add_item(
             miru.Button(
                 label="View Journal", custom_id=f"JOURNAL:{user.id}:{ctx.member.id}", style=hikari.ButtonStyle.SECONDARY
             )
         ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
 
@@ -480,17 +475,15 @@ async def warns_remove(
 )
 async def timeout_cmd(
     ctx: SnedContext,
-    user: arc.Option[hikari.User, arc.UserParams("The user to time out.")],
+    user: arc.Option[hikari.Member, arc.MemberParams("The user to time out.")],
     duration: arc.Option[
         str,
         arc.StrParams("The duration to time the user out for. Example: '10 minutes', '2022-03-01', 'tomorrow 20:00'"),
     ],
     reason: arc.Option[str | None, arc.StrParams("The reason for timing out this user.")] = None,
 ) -> None:
-    if not helpers.is_member(user):
-        return
+    assert ctx.member is not None and ctx.guild_id is not None
     reason = helpers.format_reason(reason, max_length=1024)
-    assert ctx.member is not None
 
     if user.communication_disabled_until() is not None:
         await ctx.respond(
@@ -519,13 +512,14 @@ async def timeout_cmd(
 
     embed = await ctx.client.mod.timeout(user, ctx.member, communication_disabled_until, reason)
 
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=embed,
         components=miru.View().add_item(
             miru.Button(
                 label="View Journal", custom_id=f"JOURNAL:{user.id}:{ctx.member.id}", style=hikari.ButtonStyle.SECONDARY
             )
         ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
 
@@ -541,14 +535,12 @@ timeouts = plugin.include_slash_group(
 @arc.slash_subcommand("remove", "Remove timeout from a user.")
 async def timeouts_remove_cmd(
     ctx: SnedContext,
-    user: arc.Option[hikari.User, arc.UserParams("The user to time out.")],
+    user: arc.Option[hikari.Member, arc.MemberParams("The user to time out.")],
     reason: arc.Option[str | None, arc.StrParams("The reason for timing out this user.")] = None,
 ) -> None:
-    if not helpers.is_member(user):
-        return
     reason = helpers.format_reason(reason, max_length=1024)
 
-    assert ctx.member is not None
+    assert ctx.member is not None and ctx.guild_id is not None
 
     if user.communication_disabled_until() is None:
         await ctx.respond(
@@ -563,7 +555,7 @@ async def timeouts_remove_cmd(
 
     await ctx.client.mod.remove_timeout(user, ctx.member, reason)
 
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=hikari.Embed(
             title="🔉 " + "Timeout removed",
             description=f"**{user}**'s timeout was removed.\n**Reason:** ```{reason}```",
@@ -574,6 +566,7 @@ async def timeouts_remove_cmd(
                 label="View Journal", custom_id=f"JOURNAL:{user.id}:{ctx.member.id}", style=hikari.ButtonStyle.SECONDARY
             )
         ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
 
@@ -604,7 +597,7 @@ async def ban_cmd(
         ),
     ] = None,
 ) -> None:
-    assert ctx.member is not None
+    assert ctx.member is not None and ctx.guild_id is not None
 
     if duration:
         try:
@@ -629,7 +622,7 @@ async def ban_cmd(
         days_to_delete=days_to_delete or 0,
         reason=reason,
     )
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=embed,
         components=(
             miru.View()
@@ -646,6 +639,7 @@ async def ban_cmd(
                 )
             )
         ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
 
@@ -660,7 +654,7 @@ async def ban_cmd(
 )
 async def softban_cmd(
     ctx: SnedContext,
-    user: arc.Option[hikari.User, arc.UserParams("The user to softban")],
+    user: arc.Option[hikari.Member, arc.MemberParams("The user to softban")],
     days_to_delete: arc.Option[
         int,
         arc.IntParams(
@@ -670,8 +664,7 @@ async def softban_cmd(
     ],
     reason: arc.Option[str | None, arc.StrParams("The reason why this softban was performed")] = None,
 ) -> None:
-    helpers.is_member(user)
-    assert ctx.member is not None
+    assert ctx.member is not None and ctx.guild_id is not None
 
     await ctx.respond(hikari.ResponseType.DEFERRED_MESSAGE_CREATE)
     embed = await ctx.client.mod.ban(
@@ -681,7 +674,7 @@ async def softban_cmd(
         days_to_delete=days_to_delete,
         reason=reason,
     )
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=embed,
         components=(
             miru.View().add_item(
@@ -692,6 +685,7 @@ async def softban_cmd(
                 )
             )
         ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
 
@@ -707,16 +701,17 @@ async def unban_cmd(
     user: arc.Option[hikari.User, arc.UserParams("The user to unban")],
     reason: arc.Option[str | None, arc.StrParams("The reason for performing this unban")] = None,
 ) -> None:
-    assert ctx.member is not None
+    assert ctx.member is not None and ctx.guild_id is not None
 
     embed = await ctx.client.mod.unban(user, ctx.member, reason=reason)
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=embed,
         components=miru.View().add_item(
             miru.Button(
                 label="View Journal", custom_id=f"JOURNAL:{user.id}:{ctx.member.id}", style=hikari.ButtonStyle.SECONDARY
             )
         ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
 
@@ -727,22 +722,20 @@ async def unban_cmd(
 @arc.slash_command("kick", "Kick a user from this server.", default_permissions=hikari.Permissions.KICK_MEMBERS)
 async def kick_cmd(
     ctx: SnedContext,
-    user: arc.Option[hikari.User, arc.UserParams("The user to kick")],
+    user: arc.Option[hikari.Member, arc.MemberParams("The user to kick")],
     reason: arc.Option[str | None, arc.StrParams("The reason for performing this kick")] = None,
 ) -> None:
-    if not helpers.is_member(user):
-        return
-
-    assert ctx.member is not None
+    assert ctx.member is not None and ctx.guild_id is not None
 
     embed = await ctx.client.mod.kick(user, ctx.member, reason=reason)
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=embed,
         components=miru.View().add_item(
             miru.Button(
                 label="View Journal", custom_id=f"JOURNAL:{user.id}:{ctx.member.id}", style=hikari.ButtonStyle.SECONDARY
             )
         ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
 
@@ -759,13 +752,16 @@ async def slowmode_mcd(
         int, arc.IntParams("The slowmode interval in seconds, use 0 to disable it.", min=0, max=21600)
     ],
 ) -> None:
+    assert ctx.guild_id is not None
+
     await ctx.client.rest.edit_channel(ctx.channel_id, rate_limit_per_user=interval)
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=hikari.Embed(
             title="✅ Slowmode updated",
             description=f"{const.EMOJI_SLOWMODE} Slowmode is now set to 1 message per `{interval}` seconds.",
             color=const.EMBED_GREEN,
-        )
+        ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
 
@@ -783,10 +779,10 @@ async def slowmode_mcd(
 async def massban(
     ctx: SnedContext,
     joined_after: arc.Option[
-        hikari.User | None, arc.UserParams("Only match users that joined after this user.", name="joined-after")
+        hikari.Member | None, arc.MemberParams("Only match users that joined after this user.", name="joined-after")
     ] = None,
     joined_before: arc.Option[
-        hikari.User | None, arc.UserParams("Only match users that joined before this user.", name="joined-before")
+        hikari.Member | None, arc.MemberParams("Only match users that joined before this user.", name="joined-before")
     ] = None,
     joined: arc.Option[
         int | None, arc.IntParams("Only match users that joined this server x minutes before.", min=1)
@@ -811,11 +807,6 @@ async def massban(
         ),
     ] = None,
 ) -> None:
-    if joined_before:
-        helpers.is_member(joined_before)
-    if joined_after:
-        helpers.is_member(joined_after)
-
     guild = ctx.get_guild()
     assert guild is not None
 
@@ -851,37 +842,44 @@ async def massban(
 
     now = helpers.utcnow()
 
-    if created:  # why ruff add blank line below :(
+    if created:
 
-        def created_(member: hikari.User, offset=now - datetime.timedelta(minutes=created)) -> bool:
+        def created_pred(member: hikari.User, offset=now - datetime.timedelta(minutes=created)) -> bool:
             return member.created_at > offset
 
-        predicates.append(created_)
+        predicates.append(created_pred)
 
     if joined:
 
-        def joined_(member: hikari.User, offset=now - datetime.timedelta(minutes=joined)) -> bool:
+        def joined_pred(member: hikari.User, offset=now - datetime.timedelta(minutes=joined)) -> bool:
             if not isinstance(member, hikari.Member):
                 return True
             else:
-                return member.joined_at and member.joined_at > offset
+                return member.joined_at is not None and member.joined_at > offset
 
-        predicates.append(joined_)
+        predicates.append(joined_pred)
 
-    # TODO: these functions are gonna have to be renamed as they overwrite the function params
-    if joined_after and helpers.is_member(joined_after):
+    if joined_after:
 
-        def joined_after_(member: hikari.Member, joined_after=joined_after) -> bool:
-            return member.joined_at and joined_after.joined_at and member.joined_at > joined_after.joined_at
+        def joined_after_pred(member: hikari.Member, joined_after=joined_after) -> bool:
+            return (
+                member.joined_at is not None
+                and joined_after.joined_at is not None
+                and member.joined_at > joined_after.joined_at
+            )
 
-        predicates.append(joined_after_)
+        predicates.append(joined_after_pred)
 
-    if joined_before and helpers.is_member(joined_before):
+    if joined_before:
 
-        def joined_before_(member: hikari.Member, joined_before=joined_before) -> bool:
-            return member.joined_at and joined_before.joined_at and member.joined_at < joined_before.joined_at
+        def joined_before_pred(member: hikari.Member, joined_before=joined_before) -> bool:
+            return (
+                member.joined_at is not None
+                and joined_before.joined_at is not None
+                and member.joined_at < joined_before.joined_at
+            )
 
-        predicates.append(joined_before_)
+        predicates.append(joined_before_pred)
 
     if len(predicates) == 3:
         await ctx.respond(
@@ -921,7 +919,10 @@ async def massban(
     file = hikari.Bytes(content.encode("utf-8"), "members_to_ban.txt")
 
     if show is True:
-        await ctx.mod_respond(attachment=file)
+        await ctx.respond(
+            attachment=file,
+            flags=(await ctx.client.mod.get_msg_flags(guild.id)),
+        )
         return
 
     reason = reason or "No reason provided."
@@ -956,10 +957,7 @@ async def massban(
     if not confirmed:
         return
 
-    # FIXME: This abomination needs to be utterly destroyed
-    userlog = ctx.client.get_plugin("Logging")
-    if userlog:
-        await userlog.d.actions.freeze_logging(guild.id)
+    await ctx.client.userlogger.freeze_logging(guild.id)
 
     count = 0
 
@@ -978,16 +976,16 @@ async def massban(
         MassBanEvent(ctx.client.app, ctx.guild_id, ctx.member, len(to_ban), count, file, reason)
     )
 
-    await ctx.mod_respond(
+    await ctx.respond(
         embed=hikari.Embed(
             title="✅ Massban finished",
             description=f"Banned **{count}/{len(to_ban)}** users.",
             color=const.EMBED_GREEN,
-        )
+        ),
+        flags=(await ctx.client.mod.get_msg_flags(ctx.guild_id)),
     )
 
-    if userlog:
-        await userlog.d.actions.unfreeze_logging(ctx.guild_id)
+    await ctx.client.userlogger.unfreeze_logging(ctx.guild_id)
 
 
 @arc.loader

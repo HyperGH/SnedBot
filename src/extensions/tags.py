@@ -66,14 +66,14 @@ class TagEditorModal(miru.Modal):
         self.tag_content = ctx.get_value_by_id("content")
 
 
-async def tag_name_ac(data: arc.AutocompleteData) -> list[str]:
+async def tag_name_ac(data: arc.AutocompleteData[SnedClient, str]) -> list[str]:
     """Autocomplete for tag names."""
     if data.focused_value and data.guild_id:
         return (await Tag.fetch_closest_names(str(data.focused_value), data.guild_id)) or []
     return []
 
 
-async def tag_owned_name_ac(data: arc.AutocompleteData) -> list[str]:
+async def tag_owned_name_ac(data: arc.AutocompleteData[SnedClient, str]) -> list[str]:
     """Autocomplete for tag names that the user owns."""
     if data.focused_value and data.guild_id:
         return (await Tag.fetch_closest_owned_names(str(data.focused_value), data.guild_id, data.user.id)) or []

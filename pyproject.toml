@@ -1,5 +1,9 @@
 [tool.ruff]
 exclude = ["examples", "docs", "build"]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
 select = [
     "E",
     "F",
@@ -19,8 +23,7 @@ select = [
 ]
 ignore = ["F405", "F403", "E501", "D203", "D205", "D213", "RUF001"]
 fixable = ["I", "TCH", "D"]
-line-length = 120
-target-version = "py312"
+
 
 [tool.mypy]
 ignore_errors = true # I use pyright only because mypy dumb
