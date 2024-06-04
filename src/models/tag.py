@@ -10,7 +10,7 @@ import hikari
 from src.models.db import DatabaseModel
 
 if t.TYPE_CHECKING:
-    from src.models.context import SnedContext
+    from src.models.client import SnedContext
 
 
 @attr.define()

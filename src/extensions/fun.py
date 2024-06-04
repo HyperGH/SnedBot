@@ -386,7 +386,7 @@ class TicTacToeView(miru.View):
             value_1 += self.board[i][diag_offset_1]
             value_2 += self.board[i][diag_offset_2]
             diag_offset_1 -= 1
-            diag_offset_2 += 1
+            diag_offset_2 += 1  # noqa: SIM113
         if value_1 == self.size or value_2 == self.size:
             return WinState.PLAYER_O
         elif value_1 == -self.size or value_2 == -self.size:

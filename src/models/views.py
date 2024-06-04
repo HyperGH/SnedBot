@@ -1,3 +1,5 @@
+import typing as t
+
 import hikari
 import miru
 from miru.ext import nav
@@ -39,7 +41,7 @@ class SnedNavigator(nav.NavigatorView):
     def __init__(
         self,
         *,
-        pages: list[str | hikari.Embed],
+        pages: list[str | hikari.Embed | t.Sequence[hikari.Embed] | nav.Page],
         items: list[nav.NavItem] | None = None,
         timeout: float | None = 120.0,
         autodefer: bool = True,
@@ -61,7 +63,7 @@ class AuthorOnlyNavigator(SnedNavigator):
         self,
         author: hikari.PartialUser | hikari.Snowflakeish,
         *,
-        pages: list[str | hikari.Embed],
+        pages: list[str | hikari.Embed | t.Sequence[hikari.Embed] | nav.Page],
         items: list[nav.NavItem] | None = None,
         timeout: float | None = 300.0,
         autodefer: bool = True,

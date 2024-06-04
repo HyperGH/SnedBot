@@ -20,7 +20,6 @@ from src.models.errors import (
     RoleHierarchyError,
     UserBlacklistedError,
 )
-from src.utils import helpers
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +201,15 @@ async def application_error_handler(ctx: SnedContext, error: BaseException) -> N
                 ),
                 flags=hikari.MessageFlag.EPHEMERAL,
             )
+        elif isinstance(error, arc.OptionConverterFailureError):
+            await ctx.respond(
+                embed=hikari.Embed(
+                    title="❌ Option Conversion Error",
+                    description=f"Failed to convert option `{error.option.name}` to `{error.option.option_type}`.",
+                    color=const.ERROR_COLOR,
+                ),
+                flags=hikari.MessageFlag.EPHEMERAL,
+            )
         else:
             logger.error("Ignoring exception in command {}:".format(ctx.command.name))
             exception_msg = "\n".join(traceback.format_exception(type(error), error, error.__traceback__))
@@ -227,18 +235,12 @@ async def command_error_handler(event: arc.CommandErrorEvent[t.Any]) -> None:
     await application_error_handler(event.context, event.exception)
 
 
-# FIXME: Figure this out
-@plugin.listener(lightbulb.UserCommandCompletionEvent)
-@plugin.listener(lightbulb.SlashCommandCompletionEvent)
-@plugin.listener(lightbulb.MessageCommandCompletionEvent)
-async def application_command_completion_handler(event: lightbulb.events.CommandCompletionEvent):
-    if event.context.author.id in event.context.app.owner_ids and (
-        cm := event.command.cooldown_manager
-    ):  # Ignore cooldowns for owner c:
-        await cm.reset_cooldown(event.context)
+async def client_post_hook(ctx: SnedContext) -> None:
+    if ctx.author.id in ctx.client.owner_ids:
+        ctx.command.reset_all_limiters(ctx)
 
 
-@plugin.listener(lightbulb.PrefixCommandErrorEvent)
+""" @plugin.listener(lightbulb.PrefixCommandErrorEvent)
 async def prefix_error_handler(event: lightbulb.PrefixCommandErrorEvent) -> None:
     if event.context.author.id not in event.app.owner_ids:
         return
@@ -256,17 +258,9 @@ async def prefix_error_handler(event: lightbulb.PrefixCommandErrorEvent) -> None
             color=const.ERROR_COLOR,
         )
     )
-    raise event.exception
+    raise event.exception """
 
-
-@plugin.listener(lightbulb.events.CommandInvocationEvent)
-async def command_invoke_listener(event: lightbulb.events.CommandInvocationEvent) -> None:
-    logger.info(
-        f"Command {event.command.name} was invoked by {event.context.author} in guild {event.context.guild_id}."
-    )
-
-
-@plugin.listener(lightbulb.PrefixCommandInvocationEvent)
+""" @plugin.listener(lightbulb.PrefixCommandInvocationEvent)
 async def prefix_command_invoke_listener(event: lightbulb.PrefixCommandInvocationEvent) -> None:
     if event.context.author.id not in event.app.owner_ids:
         return
@@ -280,10 +274,14 @@ async def prefix_command_invoke_listener(event: lightbulb.PrefixCommandInvocatio
             return
 
     assert isinstance(event.context, SnedPrefixContext)
-    await event.context.event.message.add_reaction("▶️")
+    await event.context.event.message.add_reaction("▶️") """
 
 
-@plugin.listener(hikari.ExceptionEvent)
+async def on_command_invoke(ctx: SnedContext) -> None:
+    logger.info(f"Command '{ctx.command.qualified_name}' was invoked by '{ctx.author}' in guild {ctx.guild_id}.")
+
+
+@plugin.listen()
 async def event_error_handler(event: hikari.ExceptionEvent) -> None:
     logging.error("Ignoring exception in listener {}:".format(event.failed_event.__class__.__name__))
     exception_msg = "\n".join(traceback.format_exception(*event.exc_info))
@@ -294,11 +292,9 @@ async def event_error_handler(event: hikari.ExceptionEvent) -> None:
 @arc.loader
 def load(client: SnedClient) -> None:
     client.add_plugin(plugin)
-
-
-@arc.unloader
-def unload(client: SnedClient) -> None:
-    client.remove_plugin(plugin)
+    client.add_hook(on_command_invoke)
+    client.add_post_hook(client_post_hook)
+    client.set_error_handler(application_error_handler)
 
 
 # Copyright (C) 2022-present hypergonial

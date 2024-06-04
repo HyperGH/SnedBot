@@ -9,6 +9,7 @@ import arc
 import hikari
 import kosu
 import miru
+import toolbox
 
 import src.utils.db_backup as db_backup
 from src.config import Config
@@ -16,6 +17,7 @@ from src.models.audit_log import AuditLogCache
 from src.models.db import Database
 from src.models.mod_actions import ModActions
 from src.utils import cache, helpers, scheduler
+from src.utils.userlogger import UserLogger
 
 
 class SnedClient(arc.GatewayClientBase[hikari.GatewayBot]):
@@ -66,6 +68,7 @@ class SnedClient(arc.GatewayClientBase[hikari.GatewayBot]):
         self._user_id: hikari.Snowflake | None = None
         self._perspective: kosu.Client | None = None
         self._scheduler = scheduler.Scheduler(self)
+        self._userlogger = UserLogger(self)
         self._audit_log_cache: AuditLogCache = AuditLogCache(self)
         self._initial_guilds: list[hikari.Snowflake] = []
         self._start_time: datetime.datetime | None = None
@@ -104,6 +107,11 @@ class SnedClient(arc.GatewayClientBase[hikari.GatewayBot]):
     def scheduler(self) -> scheduler.Scheduler:
         """The scheduler instance of the bot."""
         return self._scheduler
+
+    @property
+    def userlogger(self) -> UserLogger:
+        """The userlogger instance of the bot."""
+        return self._userlogger
 
     @property
     def perspective(self) -> kosu.Client:
@@ -241,8 +249,7 @@ class SnedClient(arc.GatewayClientBase[hikari.GatewayBot]):
 
         assert me is not None
 
-        # FIXME: Get muh toolbox
-        if not channel or not (hikari.Permissions.SEND_MESSAGES & lightbulb.utils.permissions_in(channel, me)):
+        if not channel or not (hikari.Permissions.SEND_MESSAGES & toolbox.calculate_permissions(me, channel)):
             return
 
         assert isinstance(channel, hikari.TextableGuildChannel)

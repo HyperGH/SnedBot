@@ -45,7 +45,7 @@ class OutputNav(AuthorOnlyNavigator):
 
 class TrashView(AuthorOnlyView):
     @miru.button(emoji="🗑️", style=hikari.ButtonStyle.SECONDARY)
-    async def trash(self, button: miru.Button, ctx: miru.ViewContext) -> None:
+    async def trash(self, ctx: miru.ViewContext, button: miru.Button) -> None:
         assert self.message is not None
         await self.message.delete()
         self.stop()
@@ -79,7 +79,7 @@ async def send_paginated(
 
     if len(text) <= 2000:
         if channel_id:
-            view = TrashView(ctx, timeout=300)
+            view = TrashView(ctx.author, timeout=300)
             message = await ctx.app.rest.create_message(
                 channel_id, f"{prefix}{format_output(text)}{suffix}", components=view
             )
@@ -102,7 +102,7 @@ async def send_paginated(
     for line in text.split("\n"):
         paginator.add_line(format_output(line))
 
-    navmenu = OutputNav(ctx, pages=list(paginator.build_pages()), items=buttons, timeout=300)
+    navmenu = OutputNav(ctx.author, pages=list(paginator.build_pages()), items=buttons, timeout=300)
 
     if not channel_id:
         assert isinstance(messageable, hikari.User)

@@ -7,8 +7,8 @@ import json
 import typing as t
 from contextlib import suppress
 
+import arc
 import hikari
-import lightbulb
 import miru
 
 import src.models as models
@@ -23,10 +23,8 @@ from src.etc.settings_static import (
     settings_help,
 )
 from src.extensions.userlog import LogEvent
-from src.models.bot import SnedBot
-from src.models.checks import bot_has_permissions
+from src.models.client import SnedClient, SnedPlugin
 from src.models.mod_actions import ModerationFlags
-from src.models.plugin import SnedPlugin
 from src.models.settings import (
     BackButton,
     BooleanButton,
@@ -46,9 +44,9 @@ from src.utils import helpers
 if t.TYPE_CHECKING:
     from miru.abc import ViewItem
 
-    from src.models.context import SnedSlashContext
+    from src.models.client import SnedContext
 
-settings = SnedPlugin("Settings")
+plugin = SnedPlugin("Settings")
 
 
 class SettingsView(models.AuthorOnlyView):
@@ -56,13 +54,15 @@ class SettingsView(models.AuthorOnlyView):
 
     def __init__(
         self,
-        lctx: lightbulb.Context,
+        actx: SnedContext,
         *,
         timeout: float | None = 300,
         ephemeral: bool = False,
         autodefer: bool = False,
     ) -> None:
-        super().__init__(lctx, timeout=timeout, autodefer=autodefer)
+        super().__init__(actx.author, timeout=timeout, autodefer=autodefer)
+        self.actx = actx
+        self.arc_client = actx.client
 
         self.last_item: ViewItem | None = None
         """Last component that was interacted with."""
@@ -98,7 +98,9 @@ class SettingsView(models.AuthorOnlyView):
         await self._done_event.wait()
 
     # Transitions
-    def add_buttons(self, buttons: t.Sequence[miru.Button], parent: str | None = None, **kwargs) -> None:
+    def add_buttons(
+        self, buttons: t.Sequence[miru.Button | miru.LinkButton], parent: str | None = None, **kwargs
+    ) -> None:
         """Add a new set of buttons, clearing previous components."""
         self.clear_items()
 
@@ -111,7 +113,7 @@ class SettingsView(models.AuthorOnlyView):
             self.add_item(button)
 
     def select_screen(
-        self, select: miru.SelectBase, parent: str | None = None, with_done: bool = False, **kwargs
+        self, select: miru.abc.SelectBase, parent: str | None = None, with_done: bool = False, **kwargs
     ) -> None:
         """Set view to a new select screen, clearing previous components."""
         self.clear_items()
@@ -170,7 +172,7 @@ class SettingsView(models.AuthorOnlyView):
             title="Sned Configuration",
             description="""**Welcome to settings!**
 
-Here you can configure various aspects of the bot, such as moderation settings, automod, logging options, and more. 
+Here you can configure various aspects of the bot, such as moderation settings, automod, logging options, and more.
 
 Click one of the buttons below to get started!""",
             color=const.EMBED_BLUE,
@@ -186,9 +188,9 @@ Click one of the buttons below to get started!""",
 
         self.add_buttons(buttons)
         if initial:
-            resp = await self.lctx.respond(embed=embed, components=self, flags=self.flags)
-            message = await resp.message()
-            await self.start(message)
+            resp = await self.actx.respond(embed=embed, components=self, flags=self.flags)
+            message = await resp.retrieve_message()
+            self.actx.client.miru.start_view(self, bind_to=message)
         else:
             assert self.last_context is not None
             await self.last_context.edit_response(embed=embed, components=self, flags=self.flags)
@@ -201,9 +203,9 @@ Click one of the buttons below to get started!""",
 
     async def settings_report(self) -> None:
         """The reports menu."""
-        assert isinstance(self.app, SnedBot) and self.last_context and self.last_context.guild_id
+        assert self.last_context and self.last_context.guild_id
 
-        records = await self.app.db_cache.get(table="reports", guild_id=self.last_context.guild_id, limit=1)
+        records = await self.arc_client.db_cache.get(table="reports", guild_id=self.last_context.guild_id, limit=1)
 
         if not records:
             records = [
@@ -216,18 +218,20 @@ Click one of the buttons below to get started!""",
             ]
 
         pinged_roles = (
-            [self.app.cache.get_role(role_id) for role_id in records[0]["pinged_role_ids"]]
+            [self.arc_client.cache.get_role(role_id) for role_id in records[0]["pinged_role_ids"]]
             if records[0]["pinged_role_ids"]
             else []
         )
         """ all_roles = [
             role
-            for role in list(self.app.cache.get_roles_view_for_guild(self.last_context.guild_id).values())
+            for role in list(self.arc_client.cache.get_roles_view_for_guild(self.last_context.guild_id).values())
             if role.id != self.last_context.guild_id
         ]
         unadded_roles = list(set(all_roles) - set(pinged_roles)) """
 
-        channel = self.app.cache.get_guild_channel(records[0]["channel_id"]) if records[0]["channel_id"] else None
+        channel = (
+            self.arc_client.cache.get_guild_channel(records[0]["channel_id"]) if records[0]["channel_id"] else None
+        )
 
         embed = hikari.Embed(
             title="Reports Settings",
@@ -253,7 +257,7 @@ Click one of the buttons below to get started!""",
             return
 
         if self.value.boolean is not hikari.UNDEFINED:
-            await self.app.db.execute(
+            await self.arc_client.db.execute(
                 """INSERT INTO reports (is_enabled, guild_id)
                 VALUES ($1, $2)
                 ON CONFLICT (guild_id) DO
@@ -261,7 +265,7 @@ Click one of the buttons below to get started!""",
                 self.value.boolean,
                 self.last_context.guild_id,
             )
-            await self.app.db_cache.refresh(table="reports", guild_id=self.last_context.guild_id)
+            await self.arc_client.db_cache.refresh(table="reports", guild_id=self.last_context.guild_id)
 
         elif self.value.text == "Set Channel":
             embed = hikari.Embed(
@@ -281,7 +285,7 @@ Click one of the buttons below to get started!""",
             if not self.value.channels:
                 return
 
-            await self.app.db.execute(
+            await self.arc_client.db.execute(
                 """INSERT INTO reports (channel_id, guild_id)
                 VALUES ($1, $2)
                 ON CONFLICT (guild_id) DO
@@ -289,7 +293,7 @@ Click one of the buttons below to get started!""",
                 self.value.channels[0].id,
                 self.last_context.guild_id,
             )
-            await self.app.db_cache.refresh(table="reports", guild_id=self.last_context.guild_id)
+            await self.arc_client.db_cache.refresh(table="reports", guild_id=self.last_context.guild_id)
 
         elif self.value.text == "Change Roles":
             embed = hikari.Embed(
@@ -306,7 +310,7 @@ Click one of the buttons below to get started!""",
             if not self.value.is_done:
                 return
 
-            await self.app.db.execute(
+            await self.arc_client.db.execute(
                 """INSERT INTO reports (pinged_role_ids, guild_id)
                 VALUES ($1, $2)
                 ON CONFLICT (guild_id) DO
@@ -314,17 +318,15 @@ Click one of the buttons below to get started!""",
                 [role.id for role in self.value.roles] if self.value.roles else None,
                 self.last_context.guild_id,
             )
-            await self.app.db_cache.refresh(table="reports", guild_id=self.last_context.guild_id)
+            await self.arc_client.db_cache.refresh(table="reports", guild_id=self.last_context.guild_id)
 
         await self.settings_report()
 
     async def settings_mod(self) -> None:
         """Show and handle Moderation menu."""
-        assert (
-            isinstance(self.app, SnedBot) and self.last_context is not None and self.last_context.guild_id is not None
-        )
+        assert self.last_context is not None and self.last_context.guild_id is not None
 
-        mod_settings = await self.app.mod.get_settings(self.last_context.guild_id)
+        mod_settings = await self.arc_client.mod.get_settings(self.last_context.guild_id)
 
         embed = hikari.Embed(
             title="Moderation Settings",
@@ -356,7 +358,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
         assert self.last_item and self.last_item.custom_id
         flag = ModerationFlags(int(self.last_item.custom_id))
 
-        await self.app.db.execute(
+        await self.arc_client.db.execute(
             """
             INSERT INTO mod_config (guild_id, flags)
             VALUES ($1, $2)
@@ -365,22 +367,22 @@ Enabling **ephemeral responses** will show all moderation command responses in a
             self.last_context.guild_id,
             (mod_settings.flags & ~flag).value if flag & mod_settings.flags else (mod_settings.flags | flag).value,
         )
-        await self.app.db_cache.refresh(table="mod_config", guild_id=self.last_context.guild_id)
+        await self.arc_client.db_cache.refresh(table="mod_config", guild_id=self.last_context.guild_id)
 
         await self.settings_mod()
 
     async def settings_starboard(self) -> None:
-        assert (
-            isinstance(self.app, SnedBot) and self.last_context is not None and self.last_context.guild_id is not None
-        )
+        assert self.last_context is not None and self.last_context.guild_id is not None
 
         settings = await StarboardSettings.fetch(self.last_context.guild_id)
 
-        starboard_channel = self.app.cache.get_guild_channel(settings.channel_id) if settings.channel_id else None
+        starboard_channel = (
+            self.arc_client.cache.get_guild_channel(settings.channel_id) if settings.channel_id else None
+        )
         is_enabled = settings.is_enabled if settings.channel_id else False
 
         excluded_channels = (
-            [self.app.cache.get_guild_channel(channel_id) for channel_id in settings.excluded_channels]
+            [self.arc_client.cache.get_guild_channel(channel_id) for channel_id in settings.excluded_channels]
             if settings.excluded_channels
             else []
         )
@@ -506,11 +508,9 @@ Enabling **ephemeral responses** will show all moderation command responses in a
 
     async def settings_logging(self) -> None:
         """Show and handle Logging menu."""
-        assert (
-            isinstance(self.app, SnedBot) and self.last_context is not None and self.last_context.guild_id is not None
-        )
+        assert self.last_context is not None and self.last_context.guild_id is not None
 
-        userlog = self.app.get_plugin("Logging")
+        userlog = self.arc_client.get_plugin("Logging")
         assert userlog is not None
 
         log_channels = await userlog.d.actions.get_log_channel_ids_view(self.last_context.guild_id)
@@ -532,7 +532,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
         options = []
 
         for log_category, channel_id in log_channels.items():
-            channel = self.app.cache.get_guild_channel(channel_id) if channel_id else None
+            channel = self.arc_client.cache.get_guild_channel(channel_id) if channel_id else None
             embed.add_field(
                 name=f"{log_event_strings[log_category]}",
                 value=channel.mention if channel else "*Not set*",
@@ -551,7 +551,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
             return
 
         if self.value.boolean is not hikari.UNDEFINED and self.value.text == "Color logs":
-            await self.app.db.execute(
+            await self.arc_client.db.execute(
                 """INSERT INTO log_config (color, guild_id)
                 VALUES ($1, $2)
                 ON CONFLICT (guild_id) DO
@@ -559,7 +559,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
                 self.value.boolean,
                 self.last_context.guild_id,
             )
-            await self.app.db_cache.refresh(table="log_config", guild_id=self.last_context.guild_id)
+            await self.arc_client.db_cache.refresh(table="log_config", guild_id=self.last_context.guild_id)
             return await self.settings_logging()
 
         log_event = self.value.text
@@ -568,7 +568,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
         options.append(miru.SelectOption(label="Disable", value="disable", description="Stop logging this event."))
         options += [
             miru.SelectOption(label=str(channel.name), value=str(channel.id), emoji=const.EMOJI_CHANNEL)
-            for channel in self.app.cache.get_guild_channels_view_for_guild(self.last_context.guild_id).values()
+            for channel in self.arc_client.cache.get_guild_channels_view_for_guild(self.last_context.guild_id).values()
             if isinstance(channel, (hikari.GuildTextChannel, hikari.GuildNewsChannel))
         ]
 
@@ -593,7 +593,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
             return
 
         channel = self.value.channels[0] if self.value.channels else None
-        userlog = self.app.get_plugin("Logging")
+        userlog = self.arc_client.get_plugin("Logging")
         assert userlog is not None
         await userlog.d.actions.set_log_channel(
             LogEvent(log_event), self.last_context.guild_id, channel.id if channel else None
@@ -603,11 +603,9 @@ Enabling **ephemeral responses** will show all moderation command responses in a
 
     async def settings_automod(self) -> None:
         """Open and handle automoderation main menu."""
-        assert (
-            isinstance(self.app, SnedBot) and self.last_context is not None and self.last_context.guild_id is not None
-        )
+        assert self.last_context is not None and self.last_context.guild_id is not None
 
-        automod = self.app.get_plugin("Auto-Moderation")
+        automod = self.arc_client.get_plugin("Auto-Moderation")
 
         assert automod is not None
 
@@ -638,14 +636,12 @@ Enabling **ephemeral responses** will show all moderation command responses in a
 
     async def settings_automod_policy(self, policy: str | None = None) -> None:
         """Settings for an automoderation policy."""
-        assert (
-            isinstance(self.app, SnedBot) and self.last_context is not None and self.last_context.guild_id is not None
-        )
+        assert self.last_context is not None and self.last_context.guild_id is not None
 
         if not policy:
             return await self.settings_automod()
 
-        automod = self.app.get_plugin("Auto-Moderation")
+        automod = self.arc_client.get_plugin("Auto-Moderation")
 
         assert automod is not None
 
@@ -675,7 +671,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
             )
 
         elif state in ["flag", "notice"]:
-            userlog = self.app.get_plugin("Logging")
+            userlog = self.arc_client.get_plugin("Logging")
             assert userlog is not None
             channel_id = await userlog.d.actions.get_log_channel_id(LogEvent.FLAGS, self.last_context.guild_id)
             if not channel_id:
@@ -699,9 +695,9 @@ Enabling **ephemeral responses** will show all moderation command responses in a
             """Exclusions calculations"""
 
             excluded_channels = [
-                self.app.cache.get_guild_channel(channel_id) for channel_id in policy_data["excluded_channels"]
+                self.arc_client.cache.get_guild_channel(channel_id) for channel_id in policy_data["excluded_channels"]
             ]
-            excluded_roles = [self.app.cache.get_role(role_id) for role_id in policy_data["excluded_roles"]]
+            excluded_roles = [self.arc_client.cache.get_role(role_id) for role_id in policy_data["excluded_roles"]]
             excluded_channels = list(filter(None, excluded_channels))
             excluded_roles = list(filter(None, excluded_roles))
 
@@ -787,7 +783,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
 
         sql = """
         INSERT INTO mod_config (automod_policies, guild_id)
-        VALUES ($1, $2) 
+        VALUES ($1, $2)
         ON CONFLICT (guild_id) DO
         UPDATE SET automod_policies = $1"""
 
@@ -920,7 +916,7 @@ Enabling **ephemeral responses** will show all moderation command responses in a
                     await self.last_context.edit_response(embed=embed, components=[], flags=self.flags)
                     await asyncio.sleep(2)
                     self.add_buttons(
-                        [miru.Button(url="https://www.youtube.com/watch?v=dQw4w9WgXcQ", label="Surprise!")],
+                        [miru.LinkButton(url="https://www.youtube.com/watch?v=dQw4w9WgXcQ", label="Surprise!")],
                         parent="Auto-Moderation Policies",
                         policy=policy,
                     )
@@ -996,32 +992,37 @@ Enabling **ephemeral responses** will show all moderation command responses in a
             embed = settings_help["policies"][policy]
             return await self.error_screen(embed, parent="Auto-Moderation Policies", policy=policy)
 
-        await self.app.db.execute(sql, json.dumps(policies), self.last_context.guild_id)
-        await self.app.db_cache.refresh(table="mod_config", guild_id=self.last_context.guild_id)
+        await self.arc_client.db.execute(sql, json.dumps(policies), self.last_context.guild_id)
+        await self.arc_client.db_cache.refresh(table="mod_config", guild_id=self.last_context.guild_id)
         return await self.settings_automod_policy(policy)
 
 
-@settings.command
-@lightbulb.app_command_permissions(hikari.Permissions.MANAGE_GUILD, dm_enabled=False)
-@lightbulb.set_max_concurrency(1, lightbulb.GuildBucket)
-@lightbulb.add_checks(
-    bot_has_permissions(hikari.Permissions.SEND_MESSAGES, hikari.Permissions.VIEW_CHANNEL),
+@plugin.include
+@arc.with_concurrency_limit(arc.guild_concurrency(1))
+@arc.with_hook(
+    arc.bot_has_permissions(hikari.Permissions.SEND_MESSAGES | hikari.Permissions.VIEW_CHANNEL),
 )
-@lightbulb.command("settings", "Adjust different settings of the bot via an interactive menu.")
-@lightbulb.implements(lightbulb.SlashCommand)
-async def settings_cmd(ctx: SnedSlashContext) -> None:
+@arc.slash_command(
+    "settings",
+    "Adjust different settings of the bot via an interactive menu.",
+    default_permissions=hikari.Permissions.MANAGE_GUILD,
+    is_dm_enabled=False,
+)
+async def settings_cmd(ctx: SnedContext) -> None:
     assert ctx.guild_id is not None
-    ephemeral = bool((await ctx.app.mod.get_settings(ctx.guild_id)).flags & ModerationFlags.IS_EPHEMERAL)
+    ephemeral = bool((await ctx.client.mod.get_settings(ctx.guild_id)).flags & ModerationFlags.IS_EPHEMERAL)
     view = SettingsView(ctx, timeout=300, ephemeral=ephemeral)
     await view.start_settings()
 
 
-def load(bot: SnedBot) -> None:
-    bot.add_plugin(settings)
+@arc.loader
+def load(bot: SnedClient) -> None:
+    bot.add_plugin(plugin)
 
 
-def unload(bot: SnedBot) -> None:
-    bot.remove_plugin(settings)
+@arc.unloader
+def unload(bot: SnedClient) -> None:
+    bot.remove_plugin(plugin)
 
 
 # Copyright (C) 2022-present hypergonial

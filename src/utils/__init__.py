@@ -3,6 +3,7 @@ from .helpers import *
 from .ratelimiter import *
 from .scheduler import *
 from .tasks import *
+from .userlogger import *
 
 # Copyright (C) 2022-present hypergonial
 

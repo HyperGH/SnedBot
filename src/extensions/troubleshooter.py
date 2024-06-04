@@ -1,16 +1,14 @@
 import logging
 
+import arc
 import hikari
-import lightbulb
 
 from src.etc import const, get_perm_str
-from src.models import SnedSlashContext
-from src.models.bot import SnedBot
-from src.models.plugin import SnedPlugin
+from src.models.client import SnedClient, SnedContext, SnedPlugin
 
 logger = logging.getLogger(__name__)
 
-troubleshooter = SnedPlugin("Troubleshooter")
+plugin = SnedPlugin("Troubleshooter")
 
 # Find perms issues
 # Find automod config issues
@@ -67,11 +65,14 @@ PERM_DESCRIPTIONS = {
 }
 
 
-@troubleshooter.command
-@lightbulb.app_command_permissions(hikari.Permissions.MANAGE_GUILD, dm_enabled=False)
-@lightbulb.command("troubleshoot", "Diagnose and locate common configuration issues.")
-@lightbulb.implements(lightbulb.SlashCommand)
-async def troubleshoot(ctx: SnedSlashContext) -> None:
+@plugin.include
+@arc.slash_command(
+    "troubleshoot",
+    "Diagnose and locate common configuration issues.",
+    default_permissions=hikari.Permissions.MANAGE_GUILD,
+    is_dm_enabled=False,
+)
+async def troubleshoot(ctx: SnedContext) -> None:
     assert ctx.interaction.app_permissions is not None
 
     missing_perms = ~ctx.interaction.app_permissions & REQUIRED_PERMISSIONS
@@ -100,12 +101,14 @@ async def troubleshoot(ctx: SnedSlashContext) -> None:
     await ctx.mod_respond(embed=embed)
 
 
-def load(bot: SnedBot) -> None:
-    bot.add_plugin(troubleshooter)
+@arc.loader
+def load(client: SnedClient) -> None:
+    client.add_plugin(plugin)
 
 
-def unload(bot: SnedBot) -> None:
-    bot.remove_plugin(troubleshooter)
+@arc.unloader
+def unload(client: SnedClient) -> None:
+    client.remove_plugin(plugin)
 
 
 # Copyright (C) 2022-present hypergonial

@@ -134,7 +134,7 @@ async def get_userinfo(ctx: SnedContext, user: hikari.User) -> hikari.Embed:
 **• User ID:** `{member.id}`
 **• Bot:** `{member.is_bot}`
 **• Account creation date:** {format_dt(member.created_at)} ({format_dt(member.created_at, style='R')})
-**• Join date:** {format_dt(member.joined_at)} ({format_dt(member.joined_at, style='R')})
+**• Join date:** {format_dt(member.joined_at) if member.joined_at else None} ({format_dt(member.joined_at, style='R') if member.joined_at else None})
 **• Badges:** {"   ".join(get_badges(member)) or "`-`"}
 **• Warns:** `{db_user.warns}`
 **• Timed out:** {f"Until: {format_dt(comms_disabled_until)}" if comms_disabled_until is not None else "`-`"}
