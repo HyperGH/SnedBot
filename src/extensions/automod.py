@@ -8,13 +8,11 @@ import arc
 import hikari
 import kosu
 
-import src.utils as utils
 from src.etc import const
 from src.etc.settings_static import notices
 from src.models.client import SnedClient, SnedPlugin
 from src.models.events import AutoModMessageFlagEvent
 from src.utils import helpers
-from src.utils.ratelimiter import MemberBucket
 
 INVITE_REGEX = re.compile(r"(?:https?://)?discord(?:app)?\.(?:com/invite|gg)/[a-zA-Z0-9]+/?")
 """Used to detect and handle Discord invites."""
@@ -23,12 +21,14 @@ URL_REGEX = re.compile(r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0
 DISCORD_FORMATTING_REGEX = re.compile(r"<\S+>")
 """Remove Discord-specific formatting. Performance is key so some false-positives are acceptable here."""
 
-SPAM_RATELIMITER = utils.RateLimiter(10, 8, bucket=MemberBucket, wait=False)
-PUNISH_RATELIMITER = utils.RateLimiter(30, 1, bucket=MemberBucket, wait=False)
-ATTACH_SPAM_RATELIMITER = utils.RateLimiter(30, 2, bucket=MemberBucket, wait=False)
-LINK_SPAM_RATELIMITER = utils.RateLimiter(30, 2, bucket=MemberBucket, wait=False)
-ESCALATE_PREWARN_RATELIMITER = utils.RateLimiter(30, 1, bucket=MemberBucket, wait=False)
-ESCALATE_RATELIMITER = utils.RateLimiter(30, 1, bucket=MemberBucket, wait=False)
+MEMBER_KEY_FUNC: t.Callable[[hikari.PartialMessage], str] = lambda m: f"{m.author.id if m.author else None}{m.guild_id}"  # noqa: E731
+
+SPAM_RATELIMITER = arc.utils.RateLimiter[hikari.PartialMessage](10, 8, get_key_with=MEMBER_KEY_FUNC)
+PUNISH_RATELIMITER = arc.utils.RateLimiter[hikari.PartialMessage](30, 1, get_key_with=MEMBER_KEY_FUNC)
+ATTACH_SPAM_RATELIMITER = arc.utils.RateLimiter[hikari.PartialMessage](30, 2, get_key_with=MEMBER_KEY_FUNC)
+LINK_SPAM_RATELIMITER = arc.utils.RateLimiter[hikari.PartialMessage](30, 2, get_key_with=MEMBER_KEY_FUNC)
+ESCALATE_PREWARN_RATELIMITER = arc.utils.RateLimiter[hikari.PartialMessage](30, 1, get_key_with=MEMBER_KEY_FUNC)
+ESCALATE_RATELIMITER = arc.utils.RateLimiter[hikari.PartialMessage](30, 1, get_key_with=MEMBER_KEY_FUNC)
 
 logger = logging.getLogger(__name__)
 
@@ -156,9 +156,9 @@ async def punish(
         silencers.append(AutoModState.ESCALATE.value)
 
     if state in silencers:
-        await PUNISH_RATELIMITER.acquire(message)
-
-        if PUNISH_RATELIMITER.is_rate_limited(message):
+        try:
+            await PUNISH_RATELIMITER.acquire(message, wait=False)
+        except arc.utils.RateLimiterExhaustedError:
             return
 
     if not original_action:
@@ -209,9 +209,10 @@ async def punish(
         return
 
     elif state == AutoModState.ESCALATE.value:
-        await ESCALATE_PREWARN_RATELIMITER.acquire(message)
-
-        if not ESCALATE_PREWARN_RATELIMITER.is_rate_limited(message):
+        try:
+            # Check if the user has been warned before
+            await ESCALATE_PREWARN_RATELIMITER.acquire(message, wait=False)
+            # If not, issue a notice
             await message.respond(
                 content=offender.mention,
                 embed=hikari.Embed(
@@ -230,19 +231,20 @@ async def punish(
                     f"Message flagged by auto-moderator for {reason} ({action.name}).",
                 )
             )
-
-        elif ESCALATE_PREWARN_RATELIMITER.is_rate_limited(message):
-            embed = await plugin.client.mod.warn(
-                offender,
-                me,
-                f"Warned by auto-moderator for previous offenses ({action.name}).",
-            )
-            await message.respond(embed=embed)
-            return
-
-        else:
-            await ESCALATE_RATELIMITER.acquire(message)
-            if ESCALATE_RATELIMITER.is_rate_limited(message):
+        except hikari.RateLimitTooLongError:
+            # If yes, then check if we should escalate
+            try:
+                await ESCALATE_RATELIMITER.acquire(message, wait=False)
+                # If not, issue a warning
+                embed = await plugin.client.mod.warn(
+                    offender,
+                    me,
+                    f"Warned by auto-moderator for previous offenses ({action.name}).",
+                )
+                await message.respond(embed=embed)
+                return
+            except arc.utils.RateLimiterExhaustedError:
+                # Escalate to a full punishment
                 return await punish(
                     message=message,
                     policies=policies,
@@ -335,8 +337,12 @@ async def detect_spam(message: hikari.PartialMessage, policies: dict[str, t.Any]
     bool
         Whether or not the analysis should proceed to the next check.
     """
-    await SPAM_RATELIMITER.acquire(message)
-    if policies["spam"]["state"] != AutoModState.DISABLED.value and SPAM_RATELIMITER.is_rate_limited(message):
+    if policies["spam"]["state"] == AutoModState.DISABLED.value:
+        return True
+
+    try:
+        await SPAM_RATELIMITER.acquire(message, wait=False)
+    except arc.utils.RateLimiterExhaustedError:
         await punish(message, policies, AutomodActionType.SPAM, reason="spam")
         return False
     return True
@@ -357,14 +363,14 @@ async def detect_attach_spam(message: hikari.PartialMessage, policies: dict[str,
     bool
         Whether or not the analysis should proceed to the next check.
     """
-    if policies["attach_spam"]["state"] != AutoModState.DISABLED.value and message.attachments:
-        await ATTACH_SPAM_RATELIMITER.acquire(message)
+    if policies["attach_spam"]["state"] == AutoModState.DISABLED.value or not message.attachments:
+        return True
 
-        if ATTACH_SPAM_RATELIMITER.is_rate_limited(message):
-            await punish(
-                message, policies, AutomodActionType.ATTACH_SPAM, reason="posting images/attachments too quickly"
-            )
-            return False
+    try:
+        await ATTACH_SPAM_RATELIMITER.acquire(message, wait=False)
+    except arc.utils.RateLimiterExhaustedError:
+        await punish(message, policies, AutomodActionType.ATTACH_SPAM, reason="posting images/attachments too quickly")
+        return False
     return True
 
 
@@ -451,31 +457,30 @@ async def detect_link_spam(message: hikari.PartialMessage, policies: dict[str, t
     bool
         Whether or not the analysis should proceed to the next check.
     """
-    if not message.content:
+    if not message.content or policies["link_spam"]["state"] == AutoModState.DISABLED.value:
         return True
 
-    if policies["link_spam"]["state"] != AutoModState.DISABLED.value:
-        link_matches = URL_REGEX.findall(message.content)
-        if len(link_matches) > 7:
+    link_matches = URL_REGEX.findall(message.content)
+    if len(link_matches) > 7:
+        await punish(
+            message,
+            policies,
+            AutomodActionType.LINK_SPAM,
+            reason="having too many links in a single message",
+        )
+        return False
+
+    if link_matches:
+        try:
+            await LINK_SPAM_RATELIMITER.acquire(message, wait=False)
+        except arc.utils.RateLimiterExhaustedError:
             await punish(
                 message,
                 policies,
                 AutomodActionType.LINK_SPAM,
-                reason="having too many links in a single message",
+                reason="posting links too quickly",
             )
             return False
-
-        if link_matches:
-            await LINK_SPAM_RATELIMITER.acquire(message)
-
-            if LINK_SPAM_RATELIMITER.is_rate_limited(message):
-                await punish(
-                    message,
-                    policies,
-                    AutomodActionType.LINK_SPAM,
-                    reason="posting links too quickly",
-                )
-                return False
     return True
 
 

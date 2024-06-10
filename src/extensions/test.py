@@ -1,5 +1,7 @@
 import logging
 
+import arc
+
 from src.models.client import SnedClient, SnedPlugin
 
 logger = logging.getLogger(__name__)
@@ -7,11 +9,13 @@ logger = logging.getLogger(__name__)
 plugin = SnedPlugin("Test")
 
 
+@arc.loader
 def load(client: SnedClient) -> None:
     # client.add_plugin(test)
     pass
 
 
+@arc.unloader
 def unload(client: SnedClient) -> None:
     # client.remove_plugin(test)
     pass

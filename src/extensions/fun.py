@@ -19,9 +19,8 @@ from PIL import Image, ImageDraw, ImageFont
 from src.etc import const
 from src.models.client import SnedClient, SnedContext, SnedPlugin
 from src.models.views import AuthorOnlyNavigator, AuthorOnlyView
-from src.utils import GlobalBucket, RateLimiter, helpers
+from src.utils import helpers
 from src.utils.dictionaryapi import DictionaryClient, DictionaryEntry, DictionaryError, UrbanEntry
-from src.utils.ratelimiter import UserBucket
 from src.utils.rpn import InvalidExpressionError, Solver
 
 from ..config import Config
@@ -39,9 +38,11 @@ ANIMAL_EMOJI_MAPPING: dict[str, str] = {
     "racoon": "🦝",
 }
 
-ANIMAL_RATELIMITER = RateLimiter(60, 45, GlobalBucket, wait=False)
-COMF_LIMITER = RateLimiter(60, 5, UserBucket, wait=False)
-VESZTETTEM_LIMITER = RateLimiter(1800, 1, GlobalBucket, wait=False)
+ANIMAL_RATELIMITER = arc.utils.RateLimiter[hikari.PartialMessage](60, 45, get_key_with=lambda _: "padoru")
+COMF_LIMITER = arc.utils.RateLimiter[hikari.PartialMessage](
+    60, 5, get_key_with=lambda c: str(c.author.id if c.author else 0)
+)
+VESZTETTEM_LIMITER = arc.utils.RateLimiter[hikari.PartialMessage](1800, 1, get_key_with=lambda _: "padoru")
 COMF_PROGRESS_BAR_WIDTH = 20
 
 logger = logging.getLogger(__name__)
@@ -951,9 +952,9 @@ async def lose_autoresponse(event: hikari.GuildMessageCreateEvent) -> None:
         return
 
     if event.content and "vesztettem" in event.content.lower():
-        await VESZTETTEM_LIMITER.acquire(event.message)
-
-        if VESZTETTEM_LIMITER.is_rate_limited(event.message):
+        try:
+            await VESZTETTEM_LIMITER.acquire(event.message)
+        except arc.utils.RateLimiterExhaustedError:
             return
 
         await event.message.respond("Vesztettem")

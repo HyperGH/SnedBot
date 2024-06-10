@@ -6,6 +6,7 @@ import logging
 import re
 import typing as t
 
+import arc
 import attr
 import hikari
 
@@ -886,10 +887,12 @@ async def rolebutton_update(event: RoleButtonUpdateEvent) -> None:
     await plugin.client.userlogger.log(LogEvent.ROLES, log_embed, event.guild_id)
 
 
+@arc.loader
 def load(client: SnedClient) -> None:
     client.add_plugin(plugin)
 
 
+@arc.unloader
 def unload(client: SnedClient) -> None:
     client.remove_plugin(plugin)
 

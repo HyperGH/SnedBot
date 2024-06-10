@@ -299,6 +299,8 @@ class ModActions:
         if not event.get_guild():
             return
 
+        assert isinstance(event.app, hikari.GatewayBot)
+
         member: hikari.Member | None = event.app.cache.get_member(timer.guild_id, timer.user_id)
         assert timer.notes is not None
         expiry = int(timer.notes)

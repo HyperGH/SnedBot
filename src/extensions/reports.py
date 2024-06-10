@@ -2,8 +2,8 @@ import logging
 
 import arc
 import hikari
-import lightbulb
 import miru
+import toolbox
 
 from src.etc import const
 from src.models.client import SnedClient, SnedContext, SnedPlugin
@@ -114,7 +114,7 @@ async def report(ctx: SnedContext, member: hikari.Member, message: hikari.Messag
 
     me = ctx.client.cache.get_member(ctx.guild_id, ctx.client.user_id)
     assert me is not None
-    perms = lightbulb.utils.permissions_in(channel, me)
+    perms = toolbox.calculate_permissions(me, channel)
 
     if not (perms & hikari.Permissions.SEND_MESSAGES):
         return await report_perms_error(ctx)
